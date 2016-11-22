@@ -34,36 +34,33 @@ class Models:
         self._check_file_io(model_num)
         self._set_placeholders()
         self._set_seed()
-        self._set_summaries()
 
         self._network()
         self._optimizer()
 
+        self._set_summaries()
         self.merged, self.saver, self.sess, self.writer = self._set_tf_functions()
     
     def _set_placeholders(self):
-        # Define placeholder
+        """Define placeholder"""
     
     def _network(self):
-        # Define network
+        """Define network"""
 
     def _optimizer(self):
-        # Define optimizer
-
-    def _load_data_class(self, image_dict):
-        # run an instance of Data Class
+        """Define optimizer"""
 
     def _generate_training_batch(self):
-        # Use instance of Data class to generate training batch
+        """Use instance of Data class to generate training batch"""
 
     def _run_training_iter(self):
-        # run sess.run on optimizer
+        """run sess.run on optimizer"""
 
     def _run_training_summary_iter(self):
-        # run sess.run on optimizer and merged summaries
+        """run sess.run on optimizer and merged summaries"""
 
     def _record_metrics(self):
-        # Define and save metrics
+        """Define and save metrics"""
 
     def _check_flags(self, flags):
         flags_keys = ['data_directory', 'model_directory', 'datasets', 'restore', 'restore_file', 'batch_size',
@@ -92,8 +89,11 @@ class Models:
             tf.histogram_summary(var.name, var)
 
     def _set_tf_functions(self):
-        return tf.merge_all_summaries(), tf.train.Saver(), tf.InteractiveSession(),\
-               tf.train.SummaryWriter(self.flags['logging_directory'], self.sess.graph)
+        merged = tf.merge_all_summaries()
+        saver = tf.train.Saver()
+        sess = tf.InteractiveSession()
+        writer = tf.train.SummaryWriter(self.flags['logging_directory'], sess.graph)
+        return merged, saver, sess, writer
 
     def _restore(self):
         self.saver.restore(self.sess, self.flags['restore_directory'] + self.flags['restore_file'])
@@ -141,14 +141,14 @@ class Models:
             self.print_log('Iterations: %d' % iters_num)
             self.step = 1
             while self.step < iters_num:
-                print('Batch number: %d' % step)
+                print('Batch number: %d' % self.step)
                 self._generate_training_batch()
-                if step % self.flags['display_step'] != 0:
+                if self.step % self.flags['display_step'] != 0:
                     self._run_training_iter()
                 else:
                     self._run_training_summary_iter()
                     self._record_metrics()
-                self._record_training_step(step, global_step)
+                self._record_training_step(self.step, self.global_step)
             self._save_model(epoch_num=i)
 
     @staticmethod

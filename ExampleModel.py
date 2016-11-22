@@ -3,13 +3,13 @@
 import tensorflow as tf
 import numpy as np
 import scipy.misc
+from sklearn import metrics
 import pickle
 import sys
 
-from ..NNClasses.NNLayers import Layers
-from ..NNClasses.NNModels import Models
-from record import record_metrics
-from data.BREAST import BreastData
+from NNLayers import Layers
+from NNModels import Models
+#from data.BREAST import BreastData
 
 
 # Global Dictionary of Flags
@@ -34,12 +34,12 @@ flags = {
 
 
 class ConvVae(Models):
-    def __init__(self, flags_input, model_num, image_dict):
+    def __init__(self, flags_input, model_num):
         super().__init__(flags_input, model_num)
         self.print_log("Seed: %d" % flags['seed'])
         self.print_log("Vae Weights: %f" % flags['vae'])
         self.print_log("Recon Weight: %d" % flags['recon'])
-        self.data = BreastData(self.flags, image_dict)
+        #self.data = BreastData(self.flags, image_dict)
 
     def _set_placeholders(self):
         self.x = tf.placeholder(tf.float32, [None, flags['image_dim'], flags['image_dim'], 1], name='x')
@@ -58,7 +58,7 @@ class ConvVae(Models):
         tf.image_summary("x", self.x)
         tf.image_summary("x_hat", self.x_hat)
 
-    def _encoder_BREAST(self, x):
+    def _encoder(self, x):
         encoder = Layers(x)
         encoder.conv2d(5, 64)
         encoder.maxpool()
@@ -76,7 +76,7 @@ class ConvVae(Models):
         encoder.avgpool(globe=True)
         return encoder.get_output()
 
-    def _decoder_BREAST(self, z):
+    def _decoder(self, z):
         if z is None:
             mean = None
             stddev = None
@@ -103,10 +103,10 @@ class ConvVae(Models):
 
     def _network(self):
         with tf.variable_scope("model"):
-            self.latent = self._encoder_BREAST(x=self.x)
-            self.x_hat, self.mean, self.stddev = self._decoder_BREAST(z=self.latent)
+            self.latent = self._encoder(x=self.x)
+            self.x_hat, self.mean, self.stddev = self._decoder(z=self.latent)
         with tf.variable_scope("model", reuse=True):
-            self.x_gen, _, _ = self._decoder_BREAST(z=None)
+            self.x_gen, _, _ = self._decoder(z=None)
 
     def _optimizer(self):
         epsilon = 1e-8
@@ -180,7 +180,7 @@ class ConvVae(Models):
                               np.squeeze(self.batch_x[j]))
             scipy.misc.imsave(self.flags['logging_directory'] + 'x_recon_' + str(self.step) + '.png',
                               np.squeeze(self.x_recon[j]))
-        record_metrics(loss=self.loss, acc=None, batch_y=None, step=self.step, split=None, flags=self.flags)
+        self.output_loss(loss=self.loss, acc=None, batch_y=None, step=self.step, split=None, flags=self.flags)
         self.print_log("Max of x: %f" % self.batch_x[1].max())
         self.print_log("Min of x: %f" % self.batch_x[1].min())
         self.print_log("Mean of x: %f" % self.batch_x[1].mean())
@@ -188,19 +188,44 @@ class ConvVae(Models):
         self.print_log("Min of x_recon: %f" % self.x_recon[1].min())
         self.print_log("Mean of x_recon: %f" % self.x_recon[1].mean())
 
+    def output_loss(self, loss, acc, batch_y, step, split):
+        if step is not None or loss is not None:
+            self.print_log("Batch Number: " + str(step) + ", Image Loss= " + "{:.6f}".format(loss))
+        if batch_y is not None or acc is not None:
+            self.print_log(np.squeeze(batch_y))
+            self.print_log(np.argmax(acc, 1))
+            auc, tp, fp, tn, fn, total = self.auc_roc(acc, batch_y)
+            self.print_log("Error: %.1f%%" % self.error_rate(acc, batch_y) + ", AUC= %.3f" % auc + ", TP= %.3f" % tp +
+                      ", FP= %.3f" % fp + ", TN= %.3f" % tn + ", FN= %.3f" % fn)
+        if split is not None:
+            print("Training Split: ", split)
+
+    @staticmethod
+    def error_rate(predictions, labels):
+        """Return the error rate based on dense predictions and sparse labels."""
+        return 100.0 - (100.0 * np.sum(np.argmax(predictions, 1) == labels) / predictions.shape[0])
+
+    @staticmethod
+    def auc_roc(predictions, labels):  # must input np.arrays
+        total = len(labels)
+        predictions = np.argmax(predictions, 1)
+        total_pos = np.count_nonzero(labels)
+        total_neg = total - total_pos
+        tpv = np.sum([np.equal(p, l) for p, l in zip(predictions, labels) if l == 1])
+        fpv = total_pos - tpv
+        tnv = np.sum([np.equal(p, l) for p, l in zip(predictions, labels) if l == 0])
+        fnv = total_neg - tnv
+        fpr, tpr, _ = metrics.roc_curve(labels, predictions, pos_label=1)
+        auc = metrics.auc(fpr, tpr)
+        return auc, tpv / total, fpv / total, tnv / total, fnv / total, total
+
 
 def main():
     o = np.random.randint(1, 1000, 1)
     flags['seed'] = o[0]
-    run_num = sys.argv[1]
-    image_dict = pickle.load(open(flags['save_directory'] + 'preprocessed_image_dict.pickle', 'rb'))
-    model_vae = ConvVae(flags, run_num, image_dict)
-    model_vae.train(image_dict, model=1)
-    # model.save_x(bgf)
-    # x_recon = model_vae.output_shape()
-    # print(x_recon.shape)
-    # model_vae.restore()
-    # model_vae.save_x_gen(bgf, 15)
+    run_num = 1
+    model_vae = ConvVae(flags, run_num)
+    model_vae.train()
 
 if __name__ == "__main__":
     main()

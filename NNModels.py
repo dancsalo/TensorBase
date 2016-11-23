@@ -126,10 +126,10 @@ class Models:
         save_path = self.saver.save(self.sess, checkpoint_name)
         self.print_log("Model saved in file: %s" % save_path)
 
-    def _record_training_step(self, summary, step, global_step):
-        self.writer.add_summary(summary=summary, global_step=global_step)
-        step += 1
-        global_step += 1
+    def _record_training_step(self, summary):
+        self.writer.add_summary(summary=summary, global_step=self.global_step)
+        self.step += 1
+        self.global_step += 1
 
     def train(self):
         self._initialize_training()
@@ -148,7 +148,7 @@ class Models:
                 else:
                     self._run_training_summary_iter()
                     self._record_metrics()
-                self._record_training_step(self.step, self.global_step)
+                self._record_training_step(summary)
             self._save_model(epoch_num=i)
 
     @staticmethod

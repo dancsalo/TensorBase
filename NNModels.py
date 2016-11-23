@@ -40,6 +40,8 @@ class Models:
 
         self._set_summaries()
         self.merged, self.saver, self.sess, self.writer = self._set_tf_functions()
+        self.step = 1
+        self.global_step = 1
     
     def _set_placeholders(self):
         """Define placeholder"""
@@ -61,16 +63,6 @@ class Models:
 
     def _record_metrics(self):
         """Define and save metrics"""
-
-    def _check_flags(self, flags):
-        flags_keys = ['data_directory', 'model_directory', 'datasets', 'restore', 'restore_file', 'batch_size',
-                      'display_step', 'weight_decay', 'lr_decay', 'lr_iters']
-        for k in flags_keys:
-            try:
-                flags[k]
-            except KeyError:
-                print('The key %s is not defined in the flags dictionary. Please define and run again' % k)
-        return flags
 
     def _check_file_io(self, model_num):
         folder = 'Model' + str(model_num) + '/'
@@ -133,13 +125,11 @@ class Models:
 
     def train(self):
         self._initialize_training()
-        self.global_step = 1
         for i in range(len(self.flags['lr_iters'])):
             lr = self.flags['lr_iters'][i][0]
             iters_num = self.flags['lr_iters'][i][1]
             self.print_log('Learning Rate: %d' % lr)
             self.print_log('Iterations: %d' % iters_num)
-            self.step = 1
             while self.step < iters_num:
                 print('Batch number: %d' % self.step)
                 self._generate_training_batch()
@@ -150,6 +140,17 @@ class Models:
                     self._record_metrics()
                 self._record_training_step(summary)
             self._save_model(epoch_num=i)
+
+    @staticmethod
+    def _check_flags(flags):
+        flags_keys = ['data_directory', 'model_directory', 'datasets', 'restore', 'restore_file', 'batch_size',
+                      'display_step', 'weight_decay', 'lr_decay', 'lr_iters']
+        for k in flags_keys:
+            try:
+                flags[k]
+            except KeyError:
+                print('The key %s is not defined in the flags dictionary. Please define and run again' % k)
+        return flags
 
     @staticmethod
     def make_directory(folder_path):

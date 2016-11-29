@@ -59,6 +59,7 @@ class Models:
         """run sess.run on optimizer"""
 
     def _run_training_summary_iter(self):
+        self.summary = 'object to be defined'
         """run sess.run on optimizer and merged summaries"""
 
     def _record_metrics(self):
@@ -118,8 +119,8 @@ class Models:
         save_path = self.saver.save(self.sess, checkpoint_name)
         self.print_log("Model saved in file: %s" % save_path)
 
-    def _record_training_step(self, summary):
-        self.writer.add_summary(summary=summary, global_step=self.global_step)
+    def _record_training_step(self):
+        self.writer.add_summary(summary=self.summary, global_step=self.global_step)
         self.step += 1
         self.global_step += 1
 
@@ -138,7 +139,7 @@ class Models:
                 else:
                     self._run_training_summary_iter()
                     self._record_metrics()
-                self._record_training_step(summary)
+                self._record_training_step()
             self._save_model(epoch_num=i)
 
     @staticmethod

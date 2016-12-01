@@ -1,25 +1,28 @@
 #!/usr/bin/env python
 
+"""
+Author: Dan Salo
+Initial Commit: 12/1/2016
+
+Purpose: Implement Convolutional VAE for MNIST dataset to demonstrate NNClasses functionality
+"""
+
 import sys
 sys.path.insert(1, '../')
 
 from NNLayers import Layers
 from NNModel import Model
-from Data import Mnist
+from NNData import Data
 
 import tensorflow as tf
 import numpy as np
 import scipy.misc
-
-
+from tensorflow.examples.tutorials.mnist import input_data
 
 # Global Dictionary of Flags
 flags = {
-    'data_directory': '../../Data/',  # in relationship to the code_directory
-    'previous_processed_directory': 'Smart_Crop/',
     'save_directory': 'summaries/',
     'model_directory': 'conv_vae/',
-    'datasets': ['SAGE'],
     'restore': False,
     'restore_file': 'start.ckpt',
     'image_dim': 28,
@@ -125,11 +128,23 @@ class ConvVae(Model):
                               np.squeeze(self.x_recon[j]))
         self.print_log("Batch Number: " + str(self.step) + ", Image Loss= " + "{:.6f}".format(self.loss))
 
-    def output_shape(self):
-        self.sess.run(tf.global_variables_initializer())
-        norm = np.random.normal(size=[self.flags['batch_size'], self.flags['hidden_size']])
-        x = np.zeros([self.flags['batch_size'], self.flags['image_dim'], self.flags['image_dim'], 1])
-        return self.sess.run(self.x_hat, feed_dict={self.x: x, self.keep_prob: 1.0, self.epsilon: norm})
+
+class Mnist(Data):
+    def __init__(self, flags):
+        super().__init__(flags)
+
+    def load_data(self):
+        self.mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
+
+    def generate_train_batch(self, batch_size):
+        batch_x, batch_y = self.mnist.train.next_batch(batch_size)
+        batch_x = np.reshape(batch_x, [batch_size, 28, 28, 1])
+        return batch_y, batch_x
+
+    def generate_test_batch(self, batch_size):
+        batch_x, batch_y = self.mnist.test.next_batch(batch_size)
+        batch_x = np.reshape(batch_x, [batch_size, 28, 28, 1])
+        return batch_y, batch_x
 
 
 def main():

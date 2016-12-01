@@ -2,7 +2,7 @@
 
 """
 Author: Dan Salo
-Initial Commit: 12/3/2016
+Initial Commit: 12/1/2016
 
 Purpose: Class for dataset loading and batch generation
 """

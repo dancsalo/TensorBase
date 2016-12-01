@@ -12,6 +12,8 @@ Example:
     encoder.conv2d(3, 64)
     encoder.maxpool()
     ...
+    encoder.get_output()
+    ...
     decoder = Layers(z)
     decoder.deconv2d(4, 156, padding='VALID')
     decoder.deconv2d(3, 144, stride=2)

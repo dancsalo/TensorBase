@@ -59,8 +59,8 @@ class Model:
         """run sess.run on optimizer"""
 
     def _run_train_summary_iter(self):
-        self.summary = 'object to be defined'
         """run sess.run on optimizer and merged summaries"""
+        self.summary = 'object to be defined'
 
     def _record_metrics(self):
         """Define and save metrics"""

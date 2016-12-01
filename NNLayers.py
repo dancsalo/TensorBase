@@ -108,7 +108,6 @@ class Layers:
             if activation_fn is not None:
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-        
         self.count['deconv'] += 1
 
     def flatten(self, keep_prob=1):

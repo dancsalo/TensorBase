@@ -26,12 +26,12 @@ import os
 import datetime
 
 
-class Models:
-    def __init__(self, flags, model_num):
+class Model:
+    def __init__(self, flags, run_num):
         print(flags)
-        self.model_num = model_num
+        self.run_num = run_num
         self.flags = self._check_flags(flags)
-        self._check_file_io(model_num)
+        self._check_file_io(run_num)
         self._set_placeholders()
         self._set_seed()
 
@@ -52,21 +52,21 @@ class Models:
     def _optimizer(self):
         """Define optimizer"""
 
-    def _generate_training_batch(self):
+    def _generate_train_batch(self):
         """Use instance of Data class to generate training batch"""
 
-    def _run_training_iter(self):
+    def _run_train_iter(self):
         """run sess.run on optimizer"""
 
-    def _run_training_summary_iter(self):
+    def _run_train_summary_iter(self):
         self.summary = 'object to be defined'
         """run sess.run on optimizer and merged summaries"""
 
     def _record_metrics(self):
         """Define and save metrics"""
 
-    def _check_file_io(self, model_num):
-        folder = 'Model' + str(model_num) + '/'
+    def _check_file_io(self, run_num):
+        folder = 'Model' + str(run_num) + '/'
         self.flags['restore_directory'] = self.flags['save_directory'] + self.flags['model_directory']
         self.make_directory(self.flags['restore_directory'])
         self.flags['logging_directory'] = self.flags['restore_directory'] + folder
@@ -110,12 +110,12 @@ class Models:
         if self.flags['restore'] is True:
             self._restore()
         else:
-            self.sess.run(tf.initialize_all_variables())
+            self.sess.run(tf.global_variables_initializer())
             self.print_log("Model training from scratch.")
 
     def _save_model(self, epoch_num):
         self.print_log("Optimization Finished!")
-        checkpoint_name = self.flags['logging_directory'] + 'Model' + self.check_str(self.model_num) + 'epoch_%d' % epoch_num + '.ckpt'
+        checkpoint_name = self.flags['logging_directory'] + 'Model' + self.check_str(self.run_num) + 'epoch_%d' % epoch_num + '.ckpt'
         save_path = self.saver.save(self.sess, checkpoint_name)
         self.print_log("Model saved in file: %s" % save_path)
 
@@ -127,25 +127,24 @@ class Models:
     def train(self):
         self._initialize_training()
         for i in range(len(self.flags['lr_iters'])):
-            lr = self.flags['lr_iters'][i][0]
-            iters_num = self.flags['lr_iters'][i][1]
-            self.print_log('Learning Rate: %d' % lr)
-            self.print_log('Iterations: %d' % iters_num)
-            while self.step < iters_num:
+            self.learn_rate = self.flags['lr_iters'][i][0]
+            self.iters_num = self.flags['lr_iters'][i][1]
+            self.print_log('Learning Rate: %d' % self.learn_rate)
+            self.print_log('Iterations: %d' % self.iters_num)
+            while self.step < self.iters_num:
                 print('Batch number: %d' % self.step)
-                self._generate_training_batch()
+                self._generate_train_batch()
                 if self.step % self.flags['display_step'] != 0:
-                    self._run_training_iter()
+                    self._run_train_iter()
                 else:
-                    self._run_training_summary_iter()
+                    self._run_train_summary_iter()
                     self._record_metrics()
                 self._record_training_step()
             self._save_model(epoch_num=i)
 
     @staticmethod
     def _check_flags(flags):
-        flags_keys = ['data_directory', 'model_directory', 'datasets', 'restore', 'restore_file', 'batch_size',
-                      'display_step', 'weight_decay', 'lr_decay', 'lr_iters']
+        flags_keys = ['restore', 'restore_file', 'batch_size','display_step', 'weight_decay', 'lr_decay', 'lr_iters']
         for k in flags_keys:
             try:
                 flags[k]

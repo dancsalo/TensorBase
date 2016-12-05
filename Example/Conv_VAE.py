@@ -25,6 +25,7 @@ flags = {
     'model_directory': 'conv_vae/',
     'restore': False,
     'restore_file': 'start.ckpt',
+    'datasets': 'MNIST',
     'image_dim': 28,
     'hidden_size': 10,
     'batch_size': 128,

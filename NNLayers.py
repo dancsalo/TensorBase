@@ -237,6 +237,16 @@ class Layers:
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
         self.count['ap'] += 1
 
+    def noisy_and(self, num_classes):
+        scope = 'noisyAND'
+        with tf.variable_scope(scope):
+            a = self.const_variable(name='a', shape=[1], value=1.0)
+            b = self.const_variable(name='b', shape=[1, num_classes], value=0.0)
+            mean = tf.reduce_mean(self.input, reduction_indices=[1, 2])
+            self.input = (tf.nn.sigmoid(a*(mean-b))-tf.nn.sigmoid(-a*b))/(tf.sigmoid(a*(1-b))-tf.sigmoid(-a*b))
+            print(self.input)
+        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+
     def weight_variable(self, name, shape):
         """
         :param name: string

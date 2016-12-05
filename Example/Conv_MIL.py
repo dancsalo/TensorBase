@@ -78,7 +78,6 @@ class ConvMil(Model):
 
     def _generate_train_batch(self):
         self.batch_y, self.batch_x = self.data.generate_train_batch(self.flags['batch_size'])
-        self.norm = np.random.standard_normal([self.flags['batch_size'], self.flags['hidden_size']])
 
     def _run_train_iter(self):
         rate = self.learn_rate * self.flags['lr_decay']

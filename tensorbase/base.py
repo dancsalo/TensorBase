@@ -245,7 +245,7 @@ class Layers:
         with tf.variable_scope(scope):
             a = self.const_variable(name='a', shape=[1], value=1.0)
             b = self.const_variable(name='b', shape=[1, num_classes], value=0.0)
-            mean = tf.reduce_mean(self.input)
+            mean = tf.reduce_mean(self.input, axis=[1, 2])
             self.input = (tf.nn.sigmoid(a*(mean-b))-tf.nn.sigmoid(-a*b))/(tf.sigmoid(a*(1-b))-tf.sigmoid(-a*b))
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
@@ -296,6 +296,7 @@ class Layers:
         :return: tf variable
         """
         return tf.get_variable(name, shape, initializer=tf.constant_initializer(value))
+
 
 class Data:
     def __init__(self, flags, valid_percent=0.2, test_percent=0.15):
@@ -382,6 +383,7 @@ class Data:
     @property
     def num_valid_images(self):
         return self._num_valid_images
+
 
 class Model:
     """

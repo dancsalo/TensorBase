@@ -8,7 +8,7 @@ Purpose: Class for MNIST
 Adapted from https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/datasets/mnist.py
 """
 
-from NNData import Data
+from base import Data
 import os
 import numpy as np
 import gzip

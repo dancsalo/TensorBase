@@ -1,12 +1,21 @@
-## NNClasses: Neural Network Classes for Tensorflow
+## TensorBase: Minimalistic TensorFlow Framework
 
-Python 3 classes created to streamline machine learning applications in Tensorflow. Similar in concept to Keras and PrettyTensor but more compact and hopefully more underestandable. More example networks to be added in the future.
+TensorBase provides a set of Python classes that abstract the typical functions involved
+in a machine learning application and facilitate the creation of new applications
+from data management and to model implementation. TensorBase differs from other
+TensorFlow-compatible APIs such as Keras and PrettyTensor in several ways:
 
-### Classes:
-* **Model**: a parent class for Tensorflow models (NNModel.py).
-* **Layers**: a parent class for connected and convolutional networks (NNLayers.py).
-* **Data**: a parent class for batch-generating during training and testing (NNData.py).
+  1. Has a simpler structure but demands more knowledge of TensorFlow syntax
+  2. Facilitates the creation of new layers and functions in networks and training
+  3. Addresses data and metrics (e.g. loss, accuracy) management
 
-### Documentation:
-* The Template folder contains commented Data and Models objects.
-* The Example folder contains a convolutional Variational Autoencoder (Model.py) that runs on the MNIST dataset (Data.py). Tested 12/1/16 on Ubuntu 14.04, CUDA 8.0, cuDNN 5.1, Tensorflow 0.12.0.
+## Organization
+The TensorBase packages contains 3 Classes in ```base.py``` and 1 Class in ```data.py```.
+
+#### Base:
+* **Model**: a parent class that defines the general structure of TensorFlow models and manages metrics.
+* **Layers**: a parent class that iteratively creates connected and convolutional networks.
+* **Data**: a parent class for batch generation.
+
+#### Data:
+* **MNIST**: a child class that generates batchs for the MNIST dataset.

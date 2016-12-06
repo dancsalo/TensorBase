@@ -297,94 +297,93 @@ class Layers:
         """
         return tf.get_variable(name, shape, initializer=tf.constant_initializer(value))
 
-    class Data:
-        def __init__(self, flags, valid_percent=0.2, test_percent=0.15):
-            self.flags = flags
-            train_images, train_labels, self.test_images, self.test_labels = self.load_data(test_percent)
-            self._num_test_images = len(self.test_labels)
-            self._num_train_images = math.floor(len(train_labels) * (1 - valid_percent))
-            self._num_valid_images = len(train_labels) - self._num_train_images
-            self.train_images, self.train_labels, self.valid_images, self.valid_labels = \
-                self.split_data(train_images, train_labels)
+class Data:
+    def __init__(self, flags, valid_percent=0.2, test_percent=0.15):
+        self.flags = flags
+        train_images, train_labels, self.test_images, self.test_labels = self.load_data(test_percent)
+        self._num_test_images = len(self.test_labels)
+        self._num_train_images = math.floor(len(train_labels) * (1 - valid_percent))
+        self._num_valid_images = len(train_labels) - self._num_train_images
+        self.train_images, self.train_labels, self.valid_images, self.valid_labels = \
+            self.split_data(train_images, train_labels)
 
-            self.train_epochs_completed = 0
-            self.index_in_train_epoch = 0
-            self.index_in_valid_epoch = 0
-            self.index_in_test_epoch = 0
+        self.train_epochs_completed = 0
+        self.index_in_train_epoch = 0
+        self.index_in_valid_epoch = 0
+        self.index_in_test_epoch = 0
 
-        def load_data(self, test_percent=0.15):
-            """Load the dataset into memory. If data is not divded into train/test, use test_percent"""
-            train_images = list()
-            train_labels = list()
-            test_images = list()
-            test_labels = list()
-            return train_images, train_labels, test_images, test_labels
+    def load_data(self, test_percent=0.15):
+        """Load the dataset into memory. If data is not divded into train/test, use test_percent"""
+        train_images = list()
+        train_labels = list()
+        test_images = list()
+        test_labels = list()
+        return train_images, train_labels, test_images, test_labels
 
-        def split_data(self, train_images, train_labels):
-            """
-            :param train_images: numpy array (image_dim, image_dim, num_images)
-            :param train_labels: numpy array (
-            :return: train_images, train_labels, valid_images, valid_labels
-            """
-            valid_images = train_images[:self.num_valid_images]
-            valid_labels = train_labels[:self.num_valid_images]
-            train_images = train_images[self.num_valid_images:]
-            train_labels = train_labels[self.num_valid_images:]
-            return train_images, train_labels, valid_images, valid_labels
+    def split_data(self, train_images, train_labels):
+        """
+        :param train_images: numpy array (image_dim, image_dim, num_images)
+        :param train_labels: numpy array (
+        :return: train_images, train_labels, valid_images, valid_labels
+        """
+        valid_images = train_images[:self.num_valid_images]
+        valid_labels = train_labels[:self.num_valid_images]
+        train_images = train_images[self.num_valid_images:]
+        train_labels = train_labels[self.num_valid_images:]
+        return train_images, train_labels, valid_images, valid_labels
 
-        def next_train_batch(self, batch_size):
-            """Return the next `batch_size` examples from this data set."""
-            start = self.index_in_train_epoch
-            self.index_in_train_epoch += batch_size
-            if self.index_in_train_epoch > self.num_train_images:
-                # Finished epoch
-                self.train_epochs_completed += 1
+    def next_train_batch(self, batch_size):
+        """Return the next `batch_size` examples from this data set."""
+        start = self.index_in_train_epoch
+        self.index_in_train_epoch += batch_size
+        if self.index_in_train_epoch > self.num_train_images:
+            # Finished epoch
+            self.train_epochs_completed += 1
 
-                # Shuffle the data
-                perm = np.arange(self.num_train_images)
-                np.random.shuffle(perm)
-                self.train_images = self.train_images[perm]
-                self.train_labels = self.train_labels[perm]
+            # Shuffle the data
+            perm = np.arange(self.num_train_images)
+            np.random.shuffle(perm)
+            self.train_images = self.train_images[perm]
+            self.train_labels = self.train_labels[perm]
 
-                # Start next epoch
-                start = 0
-                self.index_in_train_epoch = batch_size
-                assert batch_size <= self.num_train_images
+            # Start next epoch
+            start = 0
+            self.index_in_train_epoch = batch_size
+            assert batch_size <= self.num_train_images
 
-            end = self.index_in_train_epoch
-            return self.train_labels[start:end], self.train_images[start:end]
+        end = self.index_in_train_epoch
+        return self.train_labels[start:end], self.train_images[start:end]
 
-        def next_valid_batch(self, batch_size):
-            start = self.index_in_valid_epoch
-            if self.index_in_valid_epoch + batch_size > self.num_valid_images:
-                batch_size = 1
-            self.index_in_valid_epoch += batch_size
-            end = self.index_in_valid_epoch
-            return self.valid_labels[start:end], self.valid_images[start:end], end, batch_size
+    def next_valid_batch(self, batch_size):
+        start = self.index_in_valid_epoch
+        if self.index_in_valid_epoch + batch_size > self.num_valid_images:
+            batch_size = 1
+        self.index_in_valid_epoch += batch_size
+        end = self.index_in_valid_epoch
+        return self.valid_labels[start:end], self.valid_images[start:end], end, batch_size
 
-        def next_test_batch(self, batch_size):
-            start = self.index_in_test_epoch
-            print(start)
-            if self.index_in_test_epoch + batch_size > self.num_test_images:
-                batch_size = 1
-            self.index_in_test_epoch += batch_size
-            end = self.index_in_test_epoch
-            return self.test_labels[start:end], self.test_images[start:end], end, batch_size
+    def next_test_batch(self, batch_size):
+        start = self.index_in_test_epoch
+        print(start)
+        if self.index_in_test_epoch + batch_size > self.num_test_images:
+            batch_size = 1
+        self.index_in_test_epoch += batch_size
+        end = self.index_in_test_epoch
+        return self.test_labels[start:end], self.test_images[start:end], end, batch_size
 
-        @property
-        def num_train_images(self):
-            return self._num_train_images
+    @property
+    def num_train_images(self):
+        return self._num_train_images
 
-        @property
-        def num_test_images(self):
-            return self._num_test_images
+    @property
+    def num_test_images(self):
+        return self._num_test_images
 
-        @property
-        def num_valid_images(self):
-            return self._num_valid_images
+    @property
+    def num_valid_images(self):
+        return self._num_valid_images
 
-    # !/usr/bin/env python
-
+class Model:
     """
     Author: Dan Salo
     Initial Commit: 11/11/2016
@@ -403,197 +402,193 @@ class Layers:
         decoder.deconv2d(5, 128, stride=2)
         ...
     """
+    def __init__(self, flags, run_num):
+        print(flags)
+        self.run_num = run_num
+        self.flags = self._check_flags(flags)
+        self._check_file_io(run_num)
+        self._set_placeholders()
+        self._set_seed()
+        self._define_data()
 
+        self._network()
+        self._optimizer()
 
+        self._set_summaries()
+        self.merged, self.saver, self.sess, self.writer = self._set_tf_functions()
+        self._initialize_model()
+        self.global_step = 1
 
-    class Model:
-        def __init__(self, flags, run_num):
-            print(flags)
-            self.run_num = run_num
-            self.flags = self._check_flags(flags)
-            self._check_file_io(run_num)
-            self._set_placeholders()
-            self._set_seed()
-            self._define_data()
+    def _set_placeholders(self):
+        """Define placeholder"""
 
-            self._network()
-            self._optimizer()
+    def _define_data(self):
+        """Define data class object """
+        self.num_test_images = 0
+        self.num_valid_images = 0
+        self.num_train_images = 0
 
-            self._set_summaries()
-            self.merged, self.saver, self.sess, self.writer = self._set_tf_functions()
-            self._initialize_model()
-            self.global_step = 1
+    def _network(self):
+        """Define network"""
 
-        def _set_placeholders(self):
-            """Define placeholder"""
+    def _optimizer(self):
+        """Define optimizer"""
 
-        def _define_data(self):
-            """Define data class object """
-            self.num_test_images = 0
-            self.num_valid_images = 0
-            self.num_train_images = 0
+    def _generate_train_batch(self):
+        """Use instance of Data class to generate training batch"""
 
-        def _network(self):
-            """Define network"""
+    def _generate_valid_batch(self):
+        """Use instance of Data class to generate validation batch"""
+        valid_number = 0
+        return valid_number
 
-        def _optimizer(self):
-            """Define optimizer"""
+    def _generate_test_batch(self):
+        """Use instance of Data class to generate training batch"""
+        test_number = 0
+        return test_number
 
-        def _generate_train_batch(self):
-            """Use instance of Data class to generate training batch"""
+    def _run_train_iter(self):
+        """run sess.run on optimizer"""
 
-        def _generate_valid_batch(self):
-            """Use instance of Data class to generate validation batch"""
-            valid_number = 0
-            return valid_number
+    def _run_valid_iter(self):
+        """run sess.run on labels only to computer accuracy on validation set"""
 
-        def _generate_test_batch(self):
-            """Use instance of Data class to generate training batch"""
-            test_number = 0
-            return test_number
+    def _run_test_iter(self):
+        """run sess.run on labels only to computer accuracy on test set"""
 
-        def _run_train_iter(self):
-            """run sess.run on optimizer"""
+    def _run_train_summary_iter(self):
+        """run sess.run on optimizer and merged summaries"""
+        self.summary = 'object to be defined'
 
-        def _run_valid_iter(self):
-            """run sess.run on labels only to computer accuracy on validation set"""
+    def _record_test_metrics(self):
+        """Define and save metrics for testing"""
 
-        def _run_test_iter(self):
-            """run sess.run on labels only to computer accuracy on test set"""
+    def _record_valid_metrics(self):
+        """Define and save metrics for validation"""
 
-        def _run_train_summary_iter(self):
-            """run sess.run on optimizer and merged summaries"""
-            self.summary = 'object to be defined'
+    def _record_train_metrics(self):
+        """Define and save metrics for training"""
 
-        def _record_test_metrics(self):
-            """Define and save metrics for testing"""
+    def _check_file_io(self, run_num):
+        folder = 'Model' + str(run_num) + '/'
+        self.flags['restore_directory'] = self.flags['save_directory'] + self.flags['model_directory'] + folder
+        self.make_directory(self.flags['restore_directory'])
+        logging.basicConfig(filename=self.flags['restore_directory'] + 'ModelInformation.log', level=logging.INFO)
 
-        def _record_valid_metrics(self):
-            """Define and save metrics for validation"""
+    def _set_seed(self):
+        tf.set_random_seed(self.flags['seed'])
+        np.random.seed(self.flags['seed'])
 
-        def _record_train_metrics(self):
-            """Define and save metrics for training"""
+    def _set_summaries(self):
+        for var in tf.trainable_variables():
+            tf.histogram_summary(var.name, var)
 
-        def _check_file_io(self, run_num):
-            folder = 'Model' + str(run_num) + '/'
-            self.flags['restore_directory'] = self.flags['save_directory'] + self.flags['model_directory'] + folder
-            self.make_directory(self.flags['restore_directory'])
-            logging.basicConfig(filename=self.flags['restore_directory'] + 'ModelInformation.log', level=logging.INFO)
+    def _set_tf_functions(self):
+        merged = tf.merge_all_summaries()
+        saver = tf.train.Saver()
+        sess = tf.InteractiveSession()
+        writer = tf.train.SummaryWriter(self.flags['restore_directory'], sess.graph)
+        return merged, saver, sess, writer
 
-        def _set_seed(self):
-            tf.set_random_seed(self.flags['seed'])
-            np.random.seed(self.flags['seed'])
+    def _restore(self):
+        new_saver = tf.train.import_meta_graph('./' + self.flags['restore_directory'] + self.flags['restore_file'])
+        new_saver.restore(self.sess, tf.train.latest_checkpoint('./' + self.flags['restore_directory']))
+        self.print_log("Model restored from %s" % self.flags['restore_file'])
 
-        def _set_summaries(self):
-            for var in tf.trainable_variables():
-                tf.histogram_summary(var.name, var)
+    def _setup_metrics(self):
+        self.print_log('Date: ' + str(datetime.datetime.now()).split('.')[0])
+        datasets = 'Datasets: '
+        for d in self.flags['datasets']:
+            datasets += d + ', '
+        self.print_log(datasets)
+        self.print_log('Batch_size: ' + self.check_str(self.flags['batch_size']))
+        self.print_log('Model: ' + self.check_str(self.flags['model_directory']))
+        for l in range(len(self.flags['lr_iters'])):
+            self.print_log('EPOCH %d' % l)
+            self.print_log('Learning Rate: ' + str(self.flags['lr_iters'][l][0]))
+            self.print_log('Iterations: ' + str(self.flags['lr_iters'][l][1]))
 
-        def _set_tf_functions(self):
-            merged = tf.merge_all_summaries()
-            saver = tf.train.Saver()
-            sess = tf.InteractiveSession()
-            writer = tf.train.SummaryWriter(self.flags['restore_directory'], sess.graph)
-            return merged, saver, sess, writer
+    def _initialize_model(self):
+        self._setup_metrics()
+        if self.flags['restore'] is True:
+            self._restore()
+        else:
+            self.sess.run(tf.global_variables_initializer())
+            self.print_log("Model training from scratch.")
 
-        def _restore(self):
-            new_saver = tf.train.import_meta_graph('./' + self.flags['restore_directory'] + self.flags['restore_file'])
-            new_saver.restore(self.sess, tf.train.latest_checkpoint('./' + self.flags['restore_directory']))
-            self.print_log("Model restored from %s" % self.flags['restore_file'])
+    def _save_model(self, section):
+        self.print_log("Optimization Finished!")
+        checkpoint_name = self.flags['restore_directory'] + 'part_%d' % section + '.ckpt'
+        save_path = self.saver.save(self.sess, checkpoint_name)
+        self.print_log("Model saved in file: %s" % save_path)
 
-        def _setup_metrics(self):
-            self.print_log('Date: ' + str(datetime.datetime.now()).split('.')[0])
-            datasets = 'Datasets: '
-            for d in self.flags['datasets']:
-                datasets += d + ', '
-            self.print_log(datasets)
-            self.print_log('Batch_size: ' + self.check_str(self.flags['batch_size']))
-            self.print_log('Model: ' + self.check_str(self.flags['model_directory']))
-            for l in range(len(self.flags['lr_iters'])):
-                self.print_log('EPOCH %d' % l)
-                self.print_log('Learning Rate: ' + str(self.flags['lr_iters'][l][0]))
-                self.print_log('Iterations: ' + str(self.flags['lr_iters'][l][1]))
+    def _record_training_step(self):
+        self.writer.add_summary(summary=self.summary, global_step=self.global_step)
+        self.step += 1
+        self.global_step += 1
 
-        def _initialize_model(self):
-            self._setup_metrics()
-            if self.flags['restore'] is True:
-                self._restore()
-            else:
-                self.sess.run(tf.global_variables_initializer())
-                self.print_log("Model training from scratch.")
+    def train(self):
+        for i in range(len(self.flags['lr_iters'])):
+            self.step = 1
+            self.learn_rate = self.flags['lr_iters'][i][0]
+            self.iters_num = self.flags['lr_iters'][i][1]
+            self.print_log('Learning Rate: %d' % self.learn_rate)
+            self.print_log('Iterations: %d' % self.iters_num)
+            while self.step < self.iters_num:
+                print('Batch number: %d' % self.step)
+                self._generate_train_batch()
+                if self.step % self.flags['display_step'] != 0:
+                    self._run_train_iter()
+                else:
+                    self._run_train_summary_iter()
+                    self._record_train_metrics()
+                self._record_training_step()
+            self._save_model(section=i)
 
-        def _save_model(self, section):
-            self.print_log("Optimization Finished!")
-            checkpoint_name = self.flags['restore_directory'] + 'part_%d' % section + '.ckpt'
-            save_path = self.saver.save(self.sess, checkpoint_name)
-            self.print_log("Model saved in file: %s" % save_path)
+    def valid(self):
+        self.print_log('Begin validation sequence')
+        valid_number = 0
+        while valid_number < self.num_valid_images:
+            valid_number = self._generate_valid_batch()
+            self._run_valid_iter()
+            print(valid_number)
+        self._record_valid_metrics()
 
-        def _record_training_step(self):
-            self.writer.add_summary(summary=self.summary, global_step=self.global_step)
-            self.step += 1
-            self.global_step += 1
+    def test(self):
+        self.print_log('Begin test sequence')
+        test_number = 0
+        while test_number < self.num_test_images:
+            test_number = self._generate_test_batch()
+            self._run_test_iter()
+            print(test_number)
+        self._record_test_metrics()
 
-        def train(self):
-            for i in range(len(self.flags['lr_iters'])):
-                self.step = 1
-                self.learn_rate = self.flags['lr_iters'][i][0]
-                self.iters_num = self.flags['lr_iters'][i][1]
-                self.print_log('Learning Rate: %d' % self.learn_rate)
-                self.print_log('Iterations: %d' % self.iters_num)
-                while self.step < self.iters_num:
-                    print('Batch number: %d' % self.step)
-                    self._generate_train_batch()
-                    if self.step % self.flags['display_step'] != 0:
-                        self._run_train_iter()
-                    else:
-                        self._run_train_summary_iter()
-                        self._record_train_metrics()
-                    self._record_training_step()
-                self._save_model(section=i)
+    @staticmethod
+    def _check_flags(flags):
+        flags_keys = ['restore', 'restore_file', 'batch_size', 'display_step', 'weight_decay', 'lr_decay',
+                      'lr_iters']
+        for k in flags_keys:
+            try:
+                flags[k]
+            except KeyError:
+                print('The key %s is not defined in the flags dictionary. Please define and run again' % k)
+        return flags
 
-        def valid(self):
-            self.print_log('Begin validation sequence')
-            valid_number = 0
-            while valid_number < self.num_valid_images:
-                valid_number = self._generate_valid_batch()
-                self._run_valid_iter()
-                print(valid_number)
-            self._record_valid_metrics()
+    @staticmethod
+    def make_directory(folder_path):
+        if not os.path.exists(folder_path):
+            os.makedirs(folder_path)
 
-        def test(self):
-            self.print_log('Begin test sequence')
-            test_number = 0
-            while test_number < self.num_test_images:
-                test_number = self._generate_test_batch()
-                self._run_test_iter()
-                print(test_number)
-            self._record_test_metrics()
+    @staticmethod
+    def print_log(message):
+        print(message)
+        logging.info(message)
 
-        @staticmethod
-        def _check_flags(flags):
-            flags_keys = ['restore', 'restore_file', 'batch_size', 'display_step', 'weight_decay', 'lr_decay',
-                          'lr_iters']
-            for k in flags_keys:
-                try:
-                    flags[k]
-                except KeyError:
-                    print('The key %s is not defined in the flags dictionary. Please define and run again' % k)
-            return flags
-
-        @staticmethod
-        def make_directory(folder_path):
-            if not os.path.exists(folder_path):
-                os.makedirs(folder_path)
-
-        @staticmethod
-        def print_log(message):
-            print(message)
-            logging.info(message)
-
-        @staticmethod
-        def check_str(obj):
-            if isinstance(obj, str):
-                return obj
-            if isinstance(obj, float):
-                return str(int(obj))
-            else:
-                return str(obj)
+    @staticmethod
+    def check_str(obj):
+        if isinstance(obj, str):
+            return obj
+        if isinstance(obj, float):
+            return str(int(obj))
+        else:
+            return str(obj)

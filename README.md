@@ -9,13 +9,13 @@ TensorFlow-compatible APIs such as Keras and PrettyTensor in several ways:
   2. Facilitates the creation of new layers and functions in networks and training
   3. Addresses data and metrics (e.g. loss, accuracy) management
 
-## Organization
+## Contents
 The TensorBase packages contains 3 Classes in ```base.py``` and 1 Class in ```data.py```.
 
-#### Base:
+### Base:
 * **Model**: a parent class that defines the general structure of TensorFlow models and manages metrics.
 * **Layers**: a parent class that iteratively creates connected and convolutional networks.
 * **Data**: a parent class for batch generation.
 
-#### Data:
+### Data:
 * **MNIST**: a child class that generates batchs for the MNIST dataset.

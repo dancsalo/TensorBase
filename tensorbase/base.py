@@ -38,9 +38,9 @@ class Layers:
         .count = dictionary to keep count of number of certain types of layers for naming purposes
         """
         self.input = x
-        self.count = {'conv': 1, 'deconv': 1, 'fc': 1, 'flat': 1, 'mp': 1, 'up': 1, 'ap': 1}
+        self.count = {'conv': 0, 'deconv': 0, 'fc': 0, 'flat': 0, 'mp': 0, 'up': 0, 'ap': 0}
 
-    def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0):
+    def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
         """
         :param filter_size: int. assumes square filter
         :param output_channels: int
@@ -50,25 +50,26 @@ class Layers:
         :param b_value: float
         :param s_value: float
         """
+        self.count['conv'] += 1
         scope = 'conv_' + str(self.count['conv'])
         with tf.variable_scope(scope):
             input_channels = self.input.get_shape()[3]
             output_shape = [filter_size, filter_size, input_channels, output_channels]
             w = self.weight_variable(name='weights', shape=output_shape)
             self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding=padding)
-            if s_value is not None:
-                s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
-                self.input = self.batch_norm(self.input, s)
+            if bn is True:
+                self.input = self.batch_norm(self.input, scope)
             if b_value is not None:
                 b = self.const_variable(name='bias', shape=[output_channels], value=b_value)
                 self.input = tf.add(self.input, b)
+            if s_value is not None:
+                s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
+                self.input = tf.mul(self.input, s)
             if activation_fn is not None:
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-        
-        self.count['conv'] += 1
 
-    def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0):
+    def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
         """
         :param filter_size: int. assumes square filter
         :param output_channels: int
@@ -78,6 +79,7 @@ class Layers:
         :param b_value: float
         :param s_value: float
         """
+        self.count['deconv'] += 1
         scope = 'deconv_' + str(self.count['deconv'])
         with tf.variable_scope(scope):
             input_channels = self.input.get_shape()[3]
@@ -103,21 +105,23 @@ class Layers:
             out_shape = tf.pack([batch_size, out_rows, out_cols, out_channels])
 
             self.input = tf.nn.conv2d_transpose(self.input, w, out_shape, [1, stride, stride, 1], padding)
-            if s_value is not None:
-                s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
-                self.input = self.batch_norm(self.input, s)
+            if bn is True:
+                self.input = self.batch_norm(self.input, scope)
             if b_value is not None:
                 b = self.const_variable(name='bias', shape=[output_channels], value=b_value)
                 self.input = tf.add(self.input, b)
+            if s_value is not None:
+                s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
+                self.input = tf.mul(self.input, s)
             if activation_fn is not None:
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-        self.count['deconv'] += 1
 
     def flatten(self, keep_prob=1):
         """
         :param keep_prob: int. set to 1 for no dropout
         """
+        self.count['flat'] += 1
         scope = 'flat_' + str(self.count['flat'])
         with tf.variable_scope(scope):
             input_nodes = tf.Dimension(self.input.get_shape()[1] * self.input.get_shape()[2] * self.input.get_shape()[3])
@@ -126,30 +130,36 @@ class Layers:
             if keep_prob != 1:
                 self.input = tf.nn.dropout(self.input, keep_prob=keep_prob)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-        self.count['flat'] += 1
 
-    def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, b_value=0.0):
+    def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, b_value=0.0, s_value=None, bn=False):
         """
         :param output_nodes: int
         :param keep_prob: int. set to 1 for no dropout
         :param activation_fn: tf.nn function
         :param b_value: float or None
+        :param s_value: float or None
+        :param stoch: bool
         """
+        self.count['fc'] += 1
         scope = 'fc_' + str(self.count['fc'])
         with tf.variable_scope(scope):
             input_nodes = self.input.get_shape()[1]
             output_shape = [input_nodes, output_nodes]
             w = self.weight_variable(name='weights', shape=output_shape)
             self.input = tf.matmul(self.input, w)
+            if bn is True:
+                self.input = self.batch_norm(self.input, scope)
             if b_value is not None:
-                b = self.const_variable(name='bias', shape=[output_nodes], value=0.0)
+                b = self.const_variable(name='bias', shape=[output_nodes], value=b_value)
                 self.input = tf.add(self.input, b)
+            if s_value is not None:
+                s = self.const_variable(name='scale', shape=[output_nodes], value=s_value)
+                self.input = tf.mul(self.input, s)
             if activation_fn is not None:
                 self.input = activation_fn(self.input)
             if keep_prob != 1:
                 self.input = tf.nn.dropout(self.input, keep_prob=keep_prob)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-        self.count['fc'] += 1
 
     def unpool(self, k=2):
         """
@@ -199,6 +209,7 @@ class Layers:
         :param k: int
         :param globe:  int, whether to pool over each feature map in its entirety
         """
+        self.count['mp'] += 1
         scope = 'maxpool_' + str(self.count['mp'])
         if globe is True:  # self.input must be a 4D image stack
             k1 = self.input.get_shape()[1]
@@ -215,13 +226,13 @@ class Layers:
         with tf.variable_scope(scope):
             self.input = tf.nn.max_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-        self.count['mp'] += 1
 
     def avgpool(self, k=2, globe=False):
         """
          :param k: int
          :param globe: int, whether to pool over each feature map in its entirety
          """
+        self.count['ap'] += 1
         scope = 'avgpool_' + str(self.count['mp'])
         if globe is True:  # self.input must be a 4D image stack
             k1 = self.input.get_shape()[1]
@@ -238,7 +249,6 @@ class Layers:
         with tf.variable_scope(scope):
             self.input = tf.nn.avg_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-        self.count['ap'] += 1
 
     def noisy_and(self, num_classes):
         scope = 'noisyAND'
@@ -249,7 +259,33 @@ class Layers:
             self.input = (tf.nn.sigmoid(a*(mean-b))-tf.nn.sigmoid(-a*b))/(tf.sigmoid(a*(1-b))-tf.sigmoid(-a*b))
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
-    def weight_variable(self, name, shape):
+    def get_output(self):
+        """
+        call at the last layer of the network.
+        """
+        return self.input
+
+    def batch_norm(self, x, epsilon=1e-3):
+        """
+        :param x: input feature map stack
+        :param scope: name of tensorflow scope
+        :param epsilon: float
+        :return: output feature map stack
+        """
+        # Calculate batch mean and variance
+        batch_mean1, batch_var1 = tf.nn.moments(x, [0], keep_dims=True)
+
+        # Apply the initial batch normalizing transform
+        z1_hat = (x - batch_mean1) / tf.sqrt(batch_var1 + epsilon)
+        return z1_hat
+
+    @staticmethod
+    def print_log(message):
+        print(message)
+        logging.info(message)
+
+    @staticmethod
+    def weight_variable(name, shape):
         """
         :param name: string
         :param shape: 4D array
@@ -259,33 +295,6 @@ class Layers:
         weights_norm = tf.reduce_sum(tf.nn.l2_loss(w), name=name + '_norm')
         tf.add_to_collection('weight_losses', weights_norm)
         return w
-
-    def get_output(self):
-        """
-        call at the last layer of the network.
-        """
-        return self.input
-
-    @staticmethod
-    def batch_norm(x, s, epsilon=1e-3):
-        """
-        :param x: input feature map stack
-        :param s: constant tf variable
-        :param epsilon: float
-        :return: output feature map stack
-        """
-        # Calculate batch mean and variance
-        batch_mean1, batch_var1 = tf.nn.moments(x, [0], keep_dims=True)
-
-        # Apply the initial batch normalizing transform
-        z1_hat = (x - batch_mean1) / tf.sqrt(batch_var1 + epsilon)
-        z1_hat = z1_hat * s
-        return z1_hat
-
-    @staticmethod
-    def print_log(message):
-        print(message)
-        logging.info(message)
 
     @staticmethod
     def const_variable(name, shape, value):

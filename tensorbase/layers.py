@@ -2,10 +2,10 @@ from .base import Layers
 import tensorflow as tf
 
 class Ladder(Layers):
-    def __init__(self, x, layer_num):
+    def __init__(self, x, layer_num=0, z_noisy_dict=dict(), clean_batch=dict()):
         super().__init__(x)
-        self.noisy_z_dict = dict()  # for ladder network
-        self.clean_batch_dict = dict()  # for ladder network
+        self._noisy_z_dict = z_noisy_dict  # for ladder network
+        self.clean_batch_dict = clean_batch  # for ladder network
         self._clean_z = dict()  # for ladder network
         self._z_hat_bn = dict()
         self.layer_num = layer_num  # only used for decoder
@@ -37,7 +37,7 @@ class Ladder(Layers):
                 self.input = self.batch_norm(self.input, clean=clean, count=self.count['conv'])
             if stoch is True:
                 self.input = tf.random_normal(tf.shape(self.input)) + self.input
-                self.noisy_z_dict[scope] = self.input
+                self._noisy_z_dict[self._layer_count] = self.input
             if b_value is not None:
                 b = self.const_variable(name='bias', shape=[output_channels], value=b_value)
                 self.input = tf.add(self.input, b)
@@ -79,12 +79,14 @@ class Ladder(Layers):
             if bn is True:
                 self.input = self.batch_norm(self.input)
                 if ladder is True:
-                    b_value = s_value = None
+                    s_value = None
                     noisy_z_ind = self.layer_num - self.count['deconv'] - self.count['fc']
-                    key = 'conv_' + str(noisy_z_ind)
-                    noisy_z = self.noisy_z_dict[key]
+                    noisy_z = self._noisy_z_dict[noisy_z_ind]
+                    print('DECODER===========================')
+                    print(noisy_z)
+                    print(self.input)
                     z_hat = self.ladder_g_function(noisy_z, self.input)
-                    self._z_hat_bn[noisy_z_ind] = (z_hat - self.clean_batch_dict[key][0]) / self.clean_batch_dict[key][1]
+                    self._z_hat_bn[noisy_z_ind] = (z_hat - self.clean_batch_dict[noisy_z_ind][0]) / self.clean_batch_dict[noisy_z_ind][1]
             if b_value is not None:
                 b = self.const_variable(name='bias', shape=[output_channels], value=b_value)
                 self.input = tf.add(self.input, b)
@@ -109,12 +111,12 @@ class Ladder(Layers):
                 if ladder is True:
                     b_value = s_value = None
                     noisy_z_ind = self.layer_num - self.count['deconv'] - self.count['fc']
-                    noisy_z = self.noisy_z_dict[noisy_z_ind]
+                    noisy_z = self._noisy_z_dict[noisy_z_ind]
                     z_hat = self.ladder_g_function(noisy_z, self.input)
                     self._z_hat_bn[noisy_z_ind] = (z_hat - self.clean_batch_dict[noisy_z_ind][0]) / self.clean_batch_dict[noisy_z_ind][1]
             if stoch is True:
                 self.input = tf.random_normal(tf.shape(self.input)) + self.input
-                self.noisy_z_dict[scope] = self.input
+                self._noisy_z_dict[self._layer_count] = self.input
             if b_value is not None:
                 b = self.const_variable(name='bias', shape=[output_nodes], value=b_value)
                 self.input = tf.add(self.input, b)
@@ -128,20 +130,22 @@ class Ladder(Layers):
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
     def ladder_g_function(self, noisy_z, u):
-        layers = noisy_z.get_shape()[3]
+        shape = [noisy_z.get_shape()[3]]
         with tf.variable_scope('ladder'):
-            a_1 = self.const_variable(name='a_1', shape=[layers], value=1.0)
-            a_2 = self.const_variable(name='a_2', shape=[layers], value=1.0)
-            a_3 = self.const_variable(name='a_3', shape=[layers], value=0.0)
-            a_4 = self.const_variable(name='a_4', shape=[layers], value=1.0)
-            a_5 = self.const_variable(name='a_5', shape=[layers], value=1.0)
+            a_1 = self.const_variable(name='a_1', shape=shape, value=1.0)
+            a_2 = self.const_variable(name='a_2', shape=shape, value=1.0)
+            a_3 = self.const_variable(name='a_3', shape=shape, value=0.0)
+            a_4 = self.const_variable(name='a_4', shape=shape, value=1.0)
+            a_5 = self.const_variable(name='a_5', shape=shape, value=1.0)
+            print(u.get_shape())
+            print(shape)
             mu = a_1 * tf.nn.sigmoid(a_2 * u + a_3) + a_4 * u + a_5
 
-            a_6 = self.const_variable(name='a_6', shape=[layers], value=1.0)
-            a_7 = self.const_variable(name='a_7', shape=[layers], value=1.0)
-            a_8 = self.const_variable(name='a_8', shape=[layers], value=0.0)
-            a_9 = self.const_variable(name='a_9', shape=[layers], value=1.0)
-            a_10 = self.const_variable(name='a_10', shape=[layers], value=1.0)
+            a_6 = self.const_variable(name='a_6', shape=shape, value=1.0)
+            a_7 = self.const_variable(name='a_7', shape=shape, value=1.0)
+            a_8 = self.const_variable(name='a_8', shape=shape, value=0.0)
+            a_9 = self.const_variable(name='a_9', shape=shape, value=1.0)
+            a_10 = self.const_variable(name='a_10', shape=shape, value=1.0)
             nu = a_6 * tf.nn.sigmoid(a_7 * u + a_8) + a_9 * u + a_10
         return (noisy_z - mu) * nu + mu
 
@@ -165,5 +169,14 @@ class Ladder(Layers):
         return self._clean_z
 
     @property
+    def clean_batch(self):
+        return self.clean_batch_dict
+
+    @property
     def layer_count(self):
         return self._layer_count
+
+    @property
+    def noisy_z(self):
+        return self._noisy_z_dict
+

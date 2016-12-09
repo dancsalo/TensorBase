@@ -58,7 +58,7 @@ class Layers:
             w = self.weight_variable(name='weights', shape=output_shape)
             self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding=padding)
             if bn is True:
-                self.input = self.batch_norm(self.input, scope)
+                self.input = self.conv_batch_norm(self.input, scope)
             if b_value is not None:
                 b = self.const_variable(name='bias', shape=[output_channels], value=b_value)
                 self.input = tf.add(self.input, b)
@@ -106,7 +106,7 @@ class Layers:
 
             self.input = tf.nn.conv2d_transpose(self.input, w, out_shape, [1, stride, stride, 1], padding)
             if bn is True:
-                self.input = self.batch_norm(self.input, scope)
+                self.input = self.conv_batch_norm(self.input, scope)
             if b_value is not None:
                 b = self.const_variable(name='bias', shape=[output_channels], value=b_value)
                 self.input = tf.add(self.input, b)
@@ -266,6 +266,20 @@ class Layers:
         return self.input
 
     def batch_norm(self, x, epsilon=1e-3):
+        """
+        :param x: input feature map stack
+        :param scope: name of tensorflow scope
+        :param epsilon: float
+        :return: output feature map stack
+        """
+        # Calculate batch mean and variance
+        batch_mean1, batch_var1 = tf.nn.moments(x, [0], keep_dims=True)
+
+        # Apply the initial batch normalizing transform
+        z1_hat = (x - batch_mean1) / tf.sqrt(batch_var1 + epsilon)
+        return z1_hat
+
+    def conv_batch_norm(self, x, epsilon=1e-3):
         """
         :param x: input feature map stack
         :param scope: name of tensorflow scope
@@ -493,6 +507,7 @@ class Model:
     def _set_summaries(self):
         for var in tf.trainable_variables():
             tf.histogram_summary(var.name, var)
+            print(var.name)
 
     def _set_tf_functions(self):
         merged = tf.merge_all_summaries()

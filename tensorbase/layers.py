@@ -34,7 +34,7 @@ class Ladder(Layers):
             w = self.weight_variable(name='weights', shape=output_shape)
             self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding=padding)
             if bn is True:
-                self.input = self.batch_norm(self.input, clean=clean, count=self.count['conv'])
+                self.input = self.conv_batch_norm(self.input, clean=clean, count=self._layer_count)
             if stoch is True:
                 self.input = tf.random_normal(tf.shape(self.input)) + self.input
                 self._noisy_z_dict[self._layer_count] = self.input
@@ -77,14 +77,11 @@ class Ladder(Layers):
 
             self.input = tf.nn.conv2d_transpose(self.input, w, out_shape, [1, stride, stride, 1], padding)
             if bn is True:
-                self.input = self.batch_norm(self.input)
+                self.input = self.conv_batch_norm(self.input)
                 if ladder is True:
                     s_value = None
                     noisy_z_ind = self.layer_num - self.count['deconv'] - self.count['fc']
                     noisy_z = self._noisy_z_dict[noisy_z_ind]
-                    print('DECODER===========================')
-                    print(noisy_z)
-                    print(self.input)
                     z_hat = self.ladder_g_function(noisy_z, self.input)
                     self._z_hat_bn[noisy_z_ind] = (z_hat - self.clean_batch_dict[noisy_z_ind][0]) / self.clean_batch_dict[noisy_z_ind][1]
             if b_value is not None:
@@ -97,7 +94,7 @@ class Ladder(Layers):
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
-    def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, b_value=0.0, s_value=None, bn=False, stoch=False, ladder=False):
+    def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, b_value=0.0, s_value=None, bn=False, stoch=False, ladder=False, clean=False):
         self.count['fc'] += 1
         self._layer_count += 1
         scope = 'fc_' + str(self.count['fc'])
@@ -107,7 +104,7 @@ class Ladder(Layers):
             w = self.weight_variable(name='weights', shape=output_shape)
             self.input = tf.matmul(self.input, w)
             if bn is True:
-                self.input = self.batch_norm(self.input)
+                self.input = self.batch_norm(self.input, clean=clean, count=self._layer_count)
                 if ladder is True:
                     b_value = s_value = None
                     noisy_z_ind = self.layer_num - self.count['deconv'] - self.count['fc']
@@ -137,8 +134,6 @@ class Ladder(Layers):
             a_3 = self.const_variable(name='a_3', shape=shape, value=0.0)
             a_4 = self.const_variable(name='a_4', shape=shape, value=1.0)
             a_5 = self.const_variable(name='a_5', shape=shape, value=1.0)
-            print(u.get_shape())
-            print(shape)
             mu = a_1 * tf.nn.sigmoid(a_2 * u + a_3) + a_4 * u + a_5
 
             a_6 = self.const_variable(name='a_6', shape=shape, value=1.0)
@@ -156,7 +151,18 @@ class Ladder(Layers):
         # Apply the initial batch normalizing transform
         z1_hat = (x - batch_mean1) / tf.sqrt(batch_var1 + epsilon)
         if clean is True:
-            self.clean_batch_dict[count] = (batch_mean1, batch_var1)
+            self.clean_batch_dict[count] = (tf.squeeze(batch_mean1), tf.squeeze(batch_var1))
+            self._clean_z[count] = z1_hat
+        return z1_hat
+
+    def conv_batch_norm(self, x, epsilon=1e-3, clean=False, count=1):
+        # Calculate batch mean and variance
+        batch_mean1, batch_var1 = tf.nn.moments(x, [0, 1, 2], keep_dims=True)
+
+        # Apply the initial batch normalizing transform
+        z1_hat = (x - batch_mean1) / tf.sqrt(batch_var1 + epsilon)
+        if clean is True:
+            self.clean_batch_dict[count] = (tf.squeeze(batch_mean1), tf.squeeze(batch_var1))
             self._clean_z[count] = z1_hat
         return z1_hat
 

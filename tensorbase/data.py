@@ -129,3 +129,4 @@ class Mnist(Data):
     def _read32(bytestream):
         dt = np.dtype(np.uint32).newbyteorder('>')
         return np.frombuffer(bytestream.read(4), dtype=dt)[0]
+

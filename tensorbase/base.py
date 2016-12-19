@@ -385,7 +385,7 @@ class Data:
             batch_size = 1
         self.index_in_valid_epoch += batch_size
         end = self.index_in_valid_epoch
-        return self.valid_labels[start:end], self.valid_images[start:end], end, batch_size
+        return self.valid_labels[start:end], self.img_norm(self.valid_images[start:end]), end, batch_size
 
     def next_test_batch(self, batch_size):
         start = self.index_in_test_epoch
@@ -394,7 +394,7 @@ class Data:
             batch_size = 1
         self.index_in_test_epoch += batch_size
         end = self.index_in_test_epoch
-        return self.test_labels[start:end], self.test_images[start:end], end, batch_size
+        return self.test_labels[start:end], self.img_norm(self.test_images[start:end]), end, batch_size
 
     @property
     def num_train_images(self):
@@ -448,7 +448,6 @@ class Model:
         self._check_file_io(run_num)
         self._set_placeholders()
         self._set_seed()
-        self._define_data()
 
         self._network()
         self._optimizer()
@@ -458,14 +457,12 @@ class Model:
         self._initialize_model()
         self.global_step = 1
 
-    def _set_placeholders(self):
-        """Define placeholder"""
-
-    def _define_data(self):
-        """Define data class object """
         self.num_test_images = 0
         self.num_valid_images = 0
         self.num_train_images = 0
+
+    def _set_placeholders(self):
+        """Define placeholder"""
 
     def _network(self):
         """Define network"""
@@ -544,9 +541,9 @@ class Model:
         self.print_log('Batch_size: ' + self.check_str(self.flags['batch_size']))
         self.print_log('Model: ' + self.check_str(self.flags['model_directory']))
         for l in range(len(self.flags['lr_iters'])):
-            self.print_log('EPOCH %d' % l)
-            self.print_log('Learning Rate: ' + str(self.flags['lr_iters'][l][0]))
-            self.print_log('Iterations: ' + str(self.flags['lr_iters'][l][1]))
+            self.print_log('SESSION %d' % l)
+            self.print_log('Learning Rate: %f' % self.flags['lr_iters'][l][0])
+            self.print_log('Iterations: %d' % self.flags['lr_iters'][l][1])
 
     def _initialize_model(self):
         self._setup_metrics()

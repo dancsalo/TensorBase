@@ -443,8 +443,14 @@ class Model:
     """
     def __init__(self, flags, run_num):
         print(flags)
+        self.global_step = 1
+        self.tf_global_step = tf.constant([0], dtype=tf.int64)
+
+        self.num_test_images = 0
+        self.num_valid_images = 0
+        self.num_train_images = 0
         self.run_num = run_num
-        self.flags = self._check_flags(flags)
+        self.flags = flags
         self._check_file_io(run_num)
         self._set_placeholders()
         self._set_seed()
@@ -455,11 +461,7 @@ class Model:
         self._set_summaries()
         self.merged, self.saver, self.sess, self.writer = self._set_tf_functions()
         self._initialize_model()
-        self.global_step = 1
 
-        self.num_test_images = 0
-        self.num_valid_images = 0
-        self.num_train_images = 0
 
     def _set_placeholders(self):
         """Define placeholder"""
@@ -563,6 +565,7 @@ class Model:
         self.writer.add_summary(summary=self.summary, global_step=self.global_step)
         self.step += 1
         self.global_step += 1
+        self.tf_global_step += 1
 
     def train(self):
         for i in range(len(self.flags['lr_iters'])):

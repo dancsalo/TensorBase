@@ -536,23 +536,16 @@ class Model:
 
     def _setup_metrics(self):
         self.print_log('Date: ' + str(datetime.datetime.now()).split('.')[0])
-        datasets = 'Datasets: '
-        for d in self.flags['datasets']:
-            datasets += d + ', '
-        self.print_log(datasets)
         self.print_log('Batch_size: ' + self.check_str(self.flags['batch_size']))
         self.print_log('Model: ' + self.check_str(self.flags['model_directory']))
-        for l in range(len(self.flags['lr_iters'])):
-            self.print_log('SESSION %d' % l)
-            self.print_log('Learning Rate: %f' % self.flags['lr_iters'][l][0])
-            self.print_log('Iterations: %d' % self.flags['lr_iters'][l][1])
 
     def _initialize_model(self):
         self._setup_metrics()
+        self.sess.run(tf.local_variables_initializer())
         if self.flags['restore'] is True:
             self._restore()
         else:
-            self.sess.run(tf.initialize_all_variables())
+            self.sess.run(tf.global_variables_initializer())
             self.print_log("Model training from scratch.")
 
     def _save_model(self, section):

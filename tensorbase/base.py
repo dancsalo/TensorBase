@@ -523,10 +523,12 @@ class Model:
             print(var.name)
 
     def _set_tf_functions(self):
-        merged = tf.merge_all_summaries()
+        merged = tf.summary.merge_all()
         saver = tf.train.Saver()
-        sess = tf.InteractiveSession()
-        writer = tf.train.SummaryWriter(self.flags['restore_directory'], sess.graph)
+        os.environ["CUDA_VISIBLE_DEVICES"]="1"
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.45)
+        sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+        writer = tf.summary.FileWriter(self.flags['restore_directory'], sess.graph)
         return merged, saver, sess, writer
 
     def _restore(self):

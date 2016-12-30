@@ -251,15 +251,39 @@ class Layers:
             self.input = tf.nn.avg_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
     
-    def res_layer(self, filter_size, output_channels, stride=1):
-        scope = 'resbet_' + str(self.count['rn'])
-        assert output_channels % 4 == 0
-        with tf.variable_scope(scope):
-            self.conv2d(filter_size=1, output_channels=int(output_channels/4), stride=1)
-            self.conv2d(filter_size=filter_size, output_channels=int(output_channels/4), stride=stride)
-            self.conv2d(filter_size=1, output_channels=output_channels, stride=1)
-            self.count['conv'] -= 3
+    def res_layer(self, output_channels, filter_size=3, stride=1, activation_fn=tf.nn.relu):
         self.count['rn'] += 1
+        scope = 'resnet_' + str(self.count['rn'])
+        input_channels = self.input.get_shape()[3]
+        with tf.variable_scope(scope):
+            if stride != 1:
+                with tf.variable_scope('conv0'):
+                    output_shape = [1, 1, input_channels, output_channels]
+                    w = self.weight_variable(name='weights', shape=output_shape)
+                    additive_output = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding='SAME')
+                    b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
+                    additive_output = tf.add(additive_output, b)
+            else:
+                additive_output = self.input
+            with tf.variable_scope('conv1'):
+                output_shape = [filter_size, filter_size, input_channels, output_channels]
+                w = self.weight_variable(name='weights', shape=output_shape)
+                self.input = self.conv_batch_norm(self.input)
+                self.input = activation_fn(self.input)
+                self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding='SAME')
+                b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
+                self.input = tf.add(self.input, b)
+            with tf.variable_scope('conv2'):
+                input_channels = self.input.get_shape()[3]
+                output_shape = [filter_size, filter_size, input_channels, output_channels]
+                w = self.weight_variable(name='weights', shape=output_shape)
+                self.input = self.conv_batch_norm(self.input)
+                self.input = activation_fn(self.input)
+                self.input = tf.nn.conv2d(self.input, w, strides=[1, 1, 1, 1], padding='SAME')
+                b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
+                self.input = tf.add(self.input, b)
+            self.input = self.input + additive_output
+        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
             
     def noisy_and(self, num_classes):
         scope = 'noisyAND'
@@ -471,7 +495,12 @@ class Model:
         self._set_summaries()
         self.merged, self.saver, self.sess, self.writer = self._set_tf_functions()
         self._initialize_model()
+    
+    def __enter__(self):
+        return self
 
+    def __exit__(self, *err):
+        self.close()   
 
     def _set_placeholders(self):
         """Define placeholder"""
@@ -535,7 +564,6 @@ class Model:
     def _set_tf_functions(self):
         merged = tf.summary.merge_all()
         saver = tf.train.Saver()
-        os.environ["CUDA_VISIBLE_DEVICES"]="1"
         config = tf.ConfigProto(log_device_placement=False)
         config.gpu_options.per_process_gpu_memory_fraction=0.45 # don't hog all vRAM
         #config.operation_timeout_in_ms=5000

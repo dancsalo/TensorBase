@@ -39,7 +39,7 @@ class Layers:
         .count = dictionary to keep count of number of certain types of layers for naming purposes
         """
         self.input = x
-        self.count = {'conv': 0, 'deconv': 0, 'fc': 0, 'flat': 0, 'mp': 0, 'up': 0, 'ap': 0}
+        self.count = {'conv': 0, 'deconv': 0, 'fc': 0, 'flat': 0, 'mp': 0, 'up': 0, 'ap': 0, 'rn': 0}
 
     def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
         """
@@ -250,7 +250,17 @@ class Layers:
         with tf.variable_scope(scope):
             self.input = tf.nn.avg_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-
+    
+    def res_layer(self, filter_size, output_channels, stride=1):
+        scope = 'resbet_' + str(self.count['rn'])
+        assert output_channels % 4 == 0
+        with tf.variable_scope(scope):
+            self.conv2d(filter_size=1, output_channels=int(output_channels/4), stride=1)
+            self.conv2d(filter_size=filter_size, output_channels=int(output_channels/4), stride=stride)
+            self.conv2d(filter_size=1, output_channels=output_channels, stride=1)
+            self.count['conv'] -= 3
+        self.count['rn'] += 1
+            
     def noisy_and(self, num_classes):
         scope = 'noisyAND'
         with tf.variable_scope(scope):
@@ -417,10 +427,10 @@ class Data:
         :return: output feature map stack
         """
         # Calculate batch mean and variance
-        m = x.mean(axis=(1,2,3))
-        s = x.std(axis=(1,2,3))
-        out = [(x[i,:,:,:] - m[i]) / s[i] for i in range(np.shape(x)[0])]
-        return out
+        # m = x.mean(axis=(1,2,3))
+        # s = x.std(axis=(1,2,3))
+        # out = [(x[i,:,:,:] - m[i]) / s[i] for i in range(np.shape(x)[0])]
+        return (x * (1 / 255.) - 0.5) * 2
 
 class Model:
     """
@@ -443,7 +453,7 @@ class Model:
     """
     def __init__(self, flags, run_num):
         print(flags)
-        self.global_step = 1
+        self.global_step = 0
         self.tf_global_step = tf.constant([0], dtype=tf.int64)
 
         self.num_test_images = 0
@@ -526,8 +536,10 @@ class Model:
         merged = tf.summary.merge_all()
         saver = tf.train.Saver()
         os.environ["CUDA_VISIBLE_DEVICES"]="1"
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.45)
-        sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+        config = tf.ConfigProto(log_device_placement=False)
+        config.gpu_options.per_process_gpu_memory_fraction=0.45 # don't hog all vRAM
+        #config.operation_timeout_in_ms=5000
+        sess = tf.InteractiveSession(config=config)
         writer = tf.summary.FileWriter(self.flags['restore_directory'], sess.graph)
         return merged, saver, sess, writer
 
@@ -560,7 +572,6 @@ class Model:
         self.writer.add_summary(summary=self.summary, global_step=self.global_step)
         self.step += 1
         self.global_step += 1
-        self.tf_global_step += 1
 
     def train(self):
         for i in range(len(self.flags['lr_iters'])):

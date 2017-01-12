@@ -1,24 +1,12 @@
 #!/usr/bin/env python
 
 """
-Author: Dan Salo
-Initial Commit: 11/11/2016
-
-Purpose: Class for convolutional model creation similar to Keras with layer-by-layer formulation.
-Example:
-    x ### is a numpy 4D array
-    encoder = Layers(input)
-    encoder.conv2d(3, 64)
-    encoder.conv2d(3, 64)
-    encoder.maxpool()
-    ...
-    encoder.get_output()
-    ...
-    decoder = Layers(z)
-    decoder.deconv2d(4, 156, padding='VALID')
-    decoder.deconv2d(3, 144, stride=2)
-    decoder.deconv2d(5, 128, stride=2)
-    ...
+@author: Dan Salo, Nov 2016
+Purpose: To facilitate network creation, data I/O, and model training in TensorFlow
+Classes:
+    Layers
+    Data
+    Model
 """
 
 import tensorflow as tf
@@ -28,21 +16,25 @@ import tensorflow.contrib.layers as init
 import math
 import os
 import datetime
-import scipy.stats
 
 
 class Layers:
+    """
+    A Class to facilitate network creation in TensorFlow.
+    Methods: conv2d, deconv2d, cflatten, maxpool, avgpool, res_layer, noisy_and, batch_norm
+    """
     def __init__(self, x):
         """
         Initialize model Layers.
         .input = numpy array
         .count = dictionary to keep count of number of certain types of layers for naming purposes
         """
-        self.input = x
+        self.input = x  # initialize input tensor
         self.count = {'conv': 0, 'deconv': 0, 'fc': 0, 'flat': 0, 'mp': 0, 'up': 0, 'ap': 0, 'rn': 0}
 
     def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
         """
+        2D Convolutional Layer.
         :param filter_size: int. assumes square filter
         :param output_channels: int
         :param stride: int
@@ -54,24 +46,29 @@ class Layers:
         self.count['conv'] += 1
         scope = 'conv_' + str(self.count['conv'])
         with tf.variable_scope(scope):
+
+            # Conv function
             input_channels = self.input.get_shape()[3]
             output_shape = [filter_size, filter_size, input_channels, output_channels]
             w = self.weight_variable(name='weights', shape=output_shape)
             self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding=padding)
-            if bn is True:
-                self.input = self.conv_batch_norm(self.input)
-            if b_value is not None:
+
+            # Additional functions
+            if bn is True:  # batch normalization
+                self.input = self.batch_norm(self.input)
+            if b_value is not None:  # bias value
                 b = self.const_variable(name='bias', shape=[output_channels], value=b_value)
                 self.input = tf.add(self.input, b)
-            if s_value is not None:
+            if s_value is not None:  # scale value
                 s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
                 self.input = tf.mul(self.input, s)
-            if activation_fn is not None:
+            if activation_fn is not None:  # activation function
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
     def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
         """
+        2D Deconvolutional Layer
         :param filter_size: int. assumes square filter
         :param output_channels: int
         :param stride: int
@@ -83,180 +80,159 @@ class Layers:
         self.count['deconv'] += 1
         scope = 'deconv_' + str(self.count['deconv'])
         with tf.variable_scope(scope):
-            input_channels = self.input.get_shape()[3]
-            output_shape = [filter_size, filter_size, output_channels, input_channels]
-            w = self.weight_variable(name='weights', shape=output_shape)
 
+            # Calculate the dimensions for deconv function
             batch_size = tf.shape(self.input)[0]
             input_height = tf.shape(self.input)[1]
             input_width = tf.shape(self.input)[2]
-            filter_height = tf.shape(w)[0]
-            filter_width = tf.shape(w)[1]
-            out_channels = tf.shape(w)[2]
-            row_stride = stride
-            col_stride = stride
 
             if padding == "VALID":
-                out_rows = (input_height - 1) * row_stride + filter_height
-                out_cols = (input_width - 1) * col_stride + filter_width
+                out_rows = (input_height - 1) * stride + filter_size
+                out_cols = (input_width - 1) * stride + filter_size
             else:  # padding == "SAME":
-                out_rows = input_height * row_stride
-                out_cols = input_width * col_stride
+                out_rows = input_height * stride
+                out_cols = input_width * stride
 
-            out_shape = tf.pack([batch_size, out_rows, out_cols, out_channels])
+            # Deconv function
+            input_channels = self.input.get_shape()[3]
+            output_shape = [filter_size, filter_size, output_channels, input_channels]
+            w = self.weight_variable(name='weights', shape=output_shape)
+            deconv_out_shape = tf.pack([batch_size, out_rows, out_cols, output_channels])
+            self.input = tf.nn.conv2d_transpose(self.input, w, deconv_out_shape, [1, stride, stride, 1], padding)
 
-            self.input = tf.nn.conv2d_transpose(self.input, w, out_shape, [1, stride, stride, 1], padding)
-            if bn is True:
-                self.input = self.conv_batch_norm(self.input)
-            if b_value is not None:
+            # Additional functions
+            if bn is True:  # batch normalization
+                self.input = self.batch_norm(self.input)
+            if b_value is not None:  # bias value
                 b = self.const_variable(name='bias', shape=[output_channels], value=b_value)
                 self.input = tf.add(self.input, b)
-            if s_value is not None:
+            if s_value is not None:  # scale value
                 s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
                 self.input = tf.mul(self.input, s)
-            if activation_fn is not None:
+            if activation_fn is not None:  # non-linear activation function
                 self.input = activation_fn(self.input)
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+        self.print_log(scope + ' output: ' + str(self.input.get_shape()))  # print shape of output
 
     def flatten(self, keep_prob=1):
         """
+        Flattens 4D Tensor (from Conv Layer) into 2D Tensor (to FC Layer)
         :param keep_prob: int. set to 1 for no dropout
         """
         self.count['flat'] += 1
         scope = 'flat_' + str(self.count['flat'])
         with tf.variable_scope(scope):
+
+            # Reshape function
             input_nodes = tf.Dimension(self.input.get_shape()[1] * self.input.get_shape()[2] * self.input.get_shape()[3])
             output_shape = tf.pack([-1, input_nodes])
             self.input = tf.reshape(self.input, output_shape)
+
+            # Dropout function
             if keep_prob != 1:
                 self.input = tf.nn.dropout(self.input, keep_prob=keep_prob)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
     def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, b_value=0.0, s_value=None, bn=False):
         """
+        Fully Connected Layer
         :param output_nodes: int
         :param keep_prob: int. set to 1 for no dropout
         :param activation_fn: tf.nn function
         :param b_value: float or None
         :param s_value: float or None
-        :param stoch: bool
+        :param bn: bool
         """
         self.count['fc'] += 1
         scope = 'fc_' + str(self.count['fc'])
         with tf.variable_scope(scope):
+
+            # Matrix Multiplication Function
             input_nodes = self.input.get_shape()[1]
             output_shape = [input_nodes, output_nodes]
             w = self.weight_variable(name='weights', shape=output_shape)
             self.input = tf.matmul(self.input, w)
-            if bn is True:
-                self.input = self.batch_norm(self.input, scope)
-            if b_value is not None:
+
+            # Additional Functions
+            if bn is True:  # batch normalization
+                self.input = self.batch_norm(self.input, 'fc')
+            if b_value is not None:  # bias value
                 b = self.const_variable(name='bias', shape=[output_nodes], value=b_value)
                 self.input = tf.add(self.input, b)
-            if s_value is not None:
+            if s_value is not None:  # scale value
                 s = self.const_variable(name='scale', shape=[output_nodes], value=s_value)
                 self.input = tf.mul(self.input, s)
-            if activation_fn is not None:
+            if activation_fn is not None:  # activation function
                 self.input = activation_fn(self.input)
-            if keep_prob != 1:
+            if keep_prob != 1:  # dropout function
                 self.input = tf.nn.dropout(self.input, keep_prob=keep_prob)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
-    def unpool(self, k=2):
-        """
-        :param k: int
-        """
-        # Source: https://github.com/tensorflow/tensorflow/issues/2169
-        # Not Yet Tested
-        bottom_shape = tf.shape(self.input)
-        top_shape = [bottom_shape[0], bottom_shape[1] * 2, bottom_shape[2] * 2, bottom_shape[3]]
-
-        batch_size = top_shape[0]
-        height = top_shape[1]
-        width = top_shape[2]
-        channels = top_shape[3]
-
-        argmax_shape = tf.to_int64([batch_size, height, width, channels])
-        output_list = [k // (argmax_shape[2] * argmax_shape[3]),
-                       k % (argmax_shape[2] * argmax_shape[3]) // argmax_shape[3]]
-        argmax = tf.pack(output_list)
-
-        t1 = tf.to_int64(tf.range(channels))
-        t1 = tf.tile(t1, [batch_size * (width // 2) * (height // 2)])
-        t1 = tf.reshape(t1, [-1, channels])
-        t1 = tf.transpose(t1, perm=[1, 0])
-        t1 = tf.reshape(t1, [channels, batch_size, height // 2, width // 2, 1])
-        t1 = tf.transpose(t1, perm=[1, 0, 2, 3, 4])
-
-        t2 = tf.to_int64(tf.range(batch_size))
-        t2 = tf.tile(t2, [channels * (width // 2) * (height // 2)])
-        t2 = tf.reshape(t2, [-1, batch_size])
-        t2 = tf.transpose(t2, perm=[1, 0])
-        t2 = tf.reshape(t2, [batch_size, channels, height // 2, width // 2, 1])
-
-        t3 = tf.transpose(argmax, perm=[1, 4, 2, 3, 0])
-
-        t = tf.concat(4, [t2, t3, t1])
-        indices = tf.reshape(t, [(height // 2) * (width // 2) * channels * batch_size, 4])
-
-        x1 = tf.transpose(self.input, perm=[0, 3, 1, 2])
-        values = tf.reshape(x1, [-1])
-
-        delta = tf.SparseTensor(indices, values, tf.to_int64(top_shape))
-        return tf.sparse_tensor_to_dense(tf.sparse_reorder(delta))
-
     def maxpool(self, k=2, globe=False):
         """
+        Takes max value over a k x k area in each input map, or over the entire map (global = True)
         :param k: int
         :param globe:  int, whether to pool over each feature map in its entirety
         """
         self.count['mp'] += 1
         scope = 'maxpool_' + str(self.count['mp'])
-        if globe is True:  # self.input must be a 4D image stack
-            k1 = self.input.get_shape()[1]
-            k2 = self.input.get_shape()[2]
-            s1 = 1
-            s2 = 1
-            padding = 'VALID'
-        else:
-            k1 = k
-            k2 = k
-            s1 = k
-            s2 = k
-            padding = 'SAME'
         with tf.variable_scope(scope):
+            if globe is True:  # Global Pool Parameters
+                k1 = self.input.get_shape()[1]
+                k2 = self.input.get_shape()[2]
+                s1 = 1
+                s2 = 1
+                padding = 'VALID'
+            else:
+                k1 = k
+                k2 = k
+                s1 = k
+                s2 = k
+                padding = 'SAME'
+            # Max Pool Function
             self.input = tf.nn.max_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
     def avgpool(self, k=2, globe=False):
         """
-         :param k: int
-         :param globe: int, whether to pool over each feature map in its entirety
-         """
+        Averages the values over a k x k area in each input map, or over the entire map (global = True)
+        :param k: int
+        :param globe: int, whether to pool over each feature map in its entirety
+        """
         self.count['ap'] += 1
         scope = 'avgpool_' + str(self.count['mp'])
-        if globe is True:  # self.input must be a 4D image stack
-            k1 = self.input.get_shape()[1]
-            k2 = self.input.get_shape()[2]
-            s1 = 1
-            s2 = 1
-            padding = 'VALID'
-        else:
-            k1 = k
-            k2 = k
-            s1 = k
-            s2 = k
-            padding = 'SAME'
         with tf.variable_scope(scope):
+            if globe is True:  # Global Pool Parameters
+                k1 = self.input.get_shape()[1]
+                k2 = self.input.get_shape()[2]
+                s1 = 1
+                s2 = 1
+                padding = 'VALID'
+            else:
+                k1 = k
+                k2 = k
+                s1 = k
+                s2 = k
+                padding = 'SAME'
+            # Average Pool Function
             self.input = tf.nn.avg_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
     
     def res_layer(self, output_channels, filter_size=3, stride=1, activation_fn=tf.nn.relu):
+        """
+        Residual Layer: Input -> BN, Act_fn, Conv1, BN, Act_fn, Conv 2 -> Output.  Return: Input + Output
+        If stride > 1, decrease dims of Input by passing through a 1 x 1 Conv Layer
+        :param output_channels: int
+        :param filter_size: int. assumes square filter
+        :param stride: int
+        :param activation_fn: tf.nn function
+        """
         self.count['rn'] += 1
         scope = 'resnet_' + str(self.count['rn'])
         input_channels = self.input.get_shape()[3]
         with tf.variable_scope(scope):
-            if stride != 1:
+
+            # Determine Additive Output Based on Stride in First Conv Layer.
+            if stride != 1:  # Decrease Input dimension with 1 x 1 Conv Layer with stride > 1
                 with tf.variable_scope('conv0'):
                     output_shape = [1, 1, input_channels, output_channels]
                     w = self.weight_variable(name='weights', shape=output_shape)
@@ -265,27 +241,36 @@ class Layers:
                     additive_output = tf.add(additive_output, b)
             else:
                 additive_output = self.input
+
+            # First Conv Layer. Implement stride in this layer if desired.
             with tf.variable_scope('conv1'):
                 output_shape = [filter_size, filter_size, input_channels, output_channels]
                 w = self.weight_variable(name='weights', shape=output_shape)
-                self.input = self.conv_batch_norm(self.input)
+                self.input = self.batch_norm(self.input)
                 self.input = activation_fn(self.input)
                 self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding='SAME')
                 b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
                 self.input = tf.add(self.input, b)
+            # Second Conv Layer
             with tf.variable_scope('conv2'):
                 input_channels = self.input.get_shape()[3]
                 output_shape = [filter_size, filter_size, input_channels, output_channels]
                 w = self.weight_variable(name='weights', shape=output_shape)
-                self.input = self.conv_batch_norm(self.input)
+                self.input = self.batch_norm(self.input)
                 self.input = activation_fn(self.input)
                 self.input = tf.nn.conv2d(self.input, w, strides=[1, 1, 1, 1], padding='SAME')
                 b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
                 self.input = tf.add(self.input, b)
+
+            # Add input and output for final return
             self.input = self.input + additive_output
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
             
     def noisy_and(self, num_classes):
+        """ Multiple Instance Learning (MIL), flexible pooling function
+        :param num_classes: int, determine number of output maps
+        """
+        assert self.input.get_shape()[3] == num_classes  # input tensor should have map depth equal to # of classes
         scope = 'noisyAND'
         with tf.variable_scope(scope):
             a = self.const_variable(name='a', shape=[1], value=1.0)
@@ -296,33 +281,26 @@ class Layers:
 
     def get_output(self):
         """
-        call at the last layer of the network.
+        :return tf.Tensor, output of network
         """
         return self.input
 
-    def batch_norm(self, x, epsilon=1e-3):
+    def batch_norm(self, x, type='conv', epsilon=1e-3):
         """
+        Batch Normalization: Apply mean subtraction and variance scaling
         :param x: input feature map stack
-        :param scope: name of tensorflow scope
+        :param type: string, either 'conv' or 'fc'
         :param epsilon: float
         :return: output feature map stack
         """
-        # Calculate batch mean and variance
-        batch_mean1, batch_var1 = tf.nn.moments(x, [0], keep_dims=True)
+        # Determine indices over which to calculate moments, based on layer type
+        if type == 'conv':
+            size = [0, 1, 2]
+        else:  # type == 'fc'
+            size = [0]
 
-        # Apply the initial batch normalizing transform
-        z1_hat = (x - batch_mean1) / tf.sqrt(batch_var1 + epsilon)
-        return z1_hat
-
-    def conv_batch_norm(self, x, epsilon=1e-3):
-        """
-        :param x: input feature map stack
-        :param scope: name of tensorflow scope
-        :param epsilon: float
-        :return: output feature map stack
-        """
         # Calculate batch mean and variance
-        batch_mean1, batch_var1 = tf.nn.moments(x, [0,1,2], keep_dims=True)
+        batch_mean1, batch_var1 = tf.nn.moments(x, size, keep_dims=True)
 
         # Apply the initial batch normalizing transform
         z1_hat = (x - batch_mean1) / tf.sqrt(batch_var1 + epsilon)
@@ -330,6 +308,7 @@ class Layers:
 
     @staticmethod
     def print_log(message):
+        """ Writes a message to terminal screen and logging file, if applicable"""
         print(message)
         logging.info(message)
 
@@ -341,7 +320,7 @@ class Layers:
         :return: tf variable
         """
         w = tf.get_variable(name=name, shape=shape, initializer=init.variance_scaling_initializer())
-        weights_norm = tf.reduce_sum(tf.nn.l2_loss(w), name=name + '_norm')
+        weights_norm = tf.reduce_sum(tf.nn.l2_loss(w), name=name + '_norm')  # Should user want to optimize weight decay
         tf.add_to_collection('weight_losses', weights_norm)
         return w
 
@@ -357,6 +336,15 @@ class Layers:
 
 
 class Data:
+    """
+    A Class to handle data I/O and batching in TensorFlow.
+    Use class methods for datasets:
+        - That can be loaded into memory all at once.
+        - That use the placeholder function in TensorFlow
+    Use batch_inputs method et al for datasets:
+        - That can't be loaded into memory all at once.
+        - That use queueing and threading fuctions in TesnorFlow
+    """
     def __init__(self, flags, valid_percent=0.2, test_percent=0.15):
         self.flags = flags
         train_images, train_labels, self.test_images, self.test_labels = self.load_data(test_percent)
@@ -372,7 +360,7 @@ class Data:
         self.index_in_test_epoch = 0
 
     def load_data(self, test_percent=0.15):
-        """Load the dataset into memory. If data is not divded into train/test, use test_percent"""
+        """Load the dataset into memory. If data is not divided into train/test, use test_percent to divide the data"""
         train_images = list()
         train_labels = list()
         test_images = list()
@@ -382,7 +370,7 @@ class Data:
     def split_data(self, train_images, train_labels):
         """
         :param train_images: numpy array (image_dim, image_dim, num_images)
-        :param train_labels: numpy array (
+        :param train_labels: numpy array (labels)
         :return: train_images, train_labels, valid_images, valid_labels
         """
         valid_images = train_images[:self.num_valid_images]
@@ -392,10 +380,16 @@ class Data:
         return train_images, train_labels, valid_images, valid_labels
 
     def next_train_batch(self, batch_size):
-        """Return the next `batch_size` examples from this data set."""
+        """
+        Return the next batch of examples from train data set
+        :param batch_size: int, size of image batch returned
+        :return train_labels: list, of labels
+        :return images: list, of images
+        """
         start = self.index_in_train_epoch
         self.index_in_train_epoch += batch_size
         if self.index_in_train_epoch > self.num_train_images:
+
             # Finished epoch
             self.train_epochs_completed += 1
 
@@ -414,6 +408,12 @@ class Data:
         return self.train_labels[start:end], self.img_norm(self.train_images[start:end])
 
     def next_valid_batch(self, batch_size):
+        """
+        Return the next batch of examples from validiation data set
+        :param batch_size: int, size of image batch returned
+        :return train_labels: list, of labels
+        :return images: list, of images
+        """
         start = self.index_in_valid_epoch
         if self.index_in_valid_epoch + batch_size > self.num_valid_images:
             batch_size = 1
@@ -422,6 +422,12 @@ class Data:
         return self.valid_labels[start:end], self.img_norm(self.valid_images[start:end]), end, batch_size
 
     def next_test_batch(self, batch_size):
+        """
+        Return the next batch of examples from test data set
+        :param batch_size: int, size of image batch returned
+        :return train_labels: list, of labels
+        :return images: list, of images
+        """
         start = self.index_in_test_epoch
         print(start)
         if self.index_in_test_epoch + batch_size > self.num_test_images:
@@ -443,57 +449,96 @@ class Data:
         return self._num_valid_images
     
     @staticmethod
-    def img_norm(x, epsilon=1e-3):
+    def img_norm(x, max_val=255):
         """
-        :param x: input feature map stack
-        :param scope: name of tensorflow scope
-        :param epsilon: float
+        Normalizes stack of images
+        :param x: input feature map stack, assume uint8
+        :param max_val: int, maximum value of input tensor
         :return: output feature map stack
         """
-        # Calculate batch mean and variance
-        # m = x.mean(axis=(1,2,3))
-        # s = x.std(axis=(1,2,3))
-        # out = [(x[i,:,:,:] - m[i]) / s[i] for i in range(np.shape(x)[0])]
-        return (x * (1 / 255.) - 0.5) * 2
+        return (x * (1 / max_val) - 0.5) * 2  # returns scaled input ranging from [-1, 1]
+
+    @classmethod
+    def batch_inputs(cls, read_and_decode_fn, tf_file, batch_size, mode="train"):
+        with tf.name_scope('batch_processing'):
+            if mode == "train":
+                epochs = None
+            else:  # test or validate or eval
+                epochs = 1
+            example_serialized = cls.queue_setup(tf_file, epochs, batch_size)
+            decoded_data = cls.thread_setup(read_and_decode_fn, example_serialized)
+            image_batch, label_batch = tf.train.batch_join(decoded_data, batch_size=batch_size, capacity=8 * batch_size)
+            return image_batch, label_batch
+
+    @staticmethod
+    def queue_setup(filename, epochs, batch_size, num_readers=4):
+        """ Sets up the queue runners for data input """
+        examples_per_shard = 1024  # Approximate number of examples per shard.
+        min_queue_examples = examples_per_shard * 16
+        filename_queue = tf.train.string_input_producer([filename], num_epochs=epochs, shuffle=True, capacity=16)
+        examples_queue = tf.RandomShuffleQueue(capacity=min_queue_examples + 3 * batch_size,
+                                               min_after_dequeue=min_queue_examples, dtypes=[tf.string])
+        enqueue_ops = list()
+        for _ in range(num_readers):
+            reader = tf.TFRecordReader()
+            _, value = reader.read(filename_queue)
+            enqueue_ops.append(examples_queue.enqueue([value]))
+        tf.train.queue_runner.add_queue_runner(tf.train.queue_runner.QueueRunner(examples_queue, enqueue_ops))
+        example_serialized = examples_queue.dequeue()
+        return example_serialized
+
+    @staticmethod
+    def thread_setup(read_and_decode_fn, example_serialized, num_preprocess_threads=4):
+        """ Sets up the threads within each reader """
+        decoded_data = list()
+        for _ in range(num_preprocess_threads):
+            decoded_data.append(read_and_decode_fn(example_serialized))
+        return decoded_data
+
+    @classmethod
+    def init_threads(self, tf_session):
+        """ Starts threads running """
+        coord = tf.train.Coordinator()
+        threads = list()
+        for qr in tf.get_collection(tf.GraphKeys.QUEUE_RUNNERS):
+            threads.extend(qr.create_threads(tf_session, coord=coord, daemon=True, start=True))
+        return threads, coord
+
+    @classmethod
+    def exit_threads(self, threads, coord):
+        """ Closes out all threads """
+        coord.request_stop()
+        coord.join(threads, stop_grace_period_secs=10)
 
 class Model:
     """
-    Author: Dan Salo
-    Initial Commit: 11/11/2016
-
-    Purpose: Parent Class for all models creation
-    Example:
-        x ### is a numpy 4D array
-        encoder = Layers(input)
-        encoder.conv2d(3, 64)
-        encoder.conv2d(3, 64)
-        encoder.maxpool()
-        ...
-        decoder = Layers(z)
-        decoder.deconv2d(4, 156, padding='VALID')
-        decoder.deconv2d(3, 144, stride=2)
-        decoder.deconv2d(5, 128, stride=2)
-        ...
+    A Class for easy Model Training.
+    Methods:
+        See list in __init__() function
     """
-    def __init__(self, flags, run_num):
+    def __init__(self, flags, run_num, vram=0.25):
         print(flags)
-        self.global_step = 0
-        self.tf_global_step = tf.constant([0], dtype=tf.int64)
 
+        # Define constants
+        self.global_step = 0
+        self.step = 0
         self.num_test_images = 0
         self.num_valid_images = 0
         self.num_train_images = 0
         self.run_num = run_num
-        self.flags = flags
-        self._check_file_io(run_num)
-        self._set_placeholders()
-        self._set_seed()
 
+        # Define other elements
+        self.results = list()
+        self.flags = flags
+
+        # Run initialization functions
+        self._check_file_io(run_num)
+        self._data()
+        self._set_seed()
         self._network()
         self._optimizer()
-
-        self._set_summaries()
-        self.merged, self.saver, self.sess, self.writer = self._set_tf_functions()
+        self._summaries()
+        self.merged, self.saver, self.sess, self.writer = self._set_tf_functions(vram)
         self._initialize_model()
     
     def __enter__(self):
@@ -502,49 +547,17 @@ class Model:
     def __exit__(self, *err):
         self.close()   
 
-    def _set_placeholders(self):
-        """Define placeholder"""
+    def _data(self):
+        """Define data"""
+        raise NotImplementedError
 
     def _network(self):
         """Define network"""
+        raise NotImplementedError
 
     def _optimizer(self):
         """Define optimizer"""
-
-    def _generate_train_batch(self):
-        """Use instance of Data class to generate training batch"""
-
-    def _generate_valid_batch(self):
-        """Use instance of Data class to generate validation batch"""
-        valid_number = 0
-        return valid_number
-
-    def _generate_test_batch(self):
-        """Use instance of Data class to generate training batch"""
-        test_number = 0
-        return test_number
-
-    def _run_train_iter(self):
-        """run sess.run on optimizer"""
-
-    def _run_valid_iter(self):
-        """run sess.run on labels only to computer accuracy on validation set"""
-
-    def _run_test_iter(self):
-        """run sess.run on labels only to computer accuracy on test set"""
-
-    def _run_train_summary_iter(self):
-        """run sess.run on optimizer and merged summaries"""
-        self.summary = 'object to be defined'
-
-    def _record_test_metrics(self):
-        """Define and save metrics for testing"""
-
-    def _record_valid_metrics(self):
-        """Define and save metrics for validation"""
-
-    def _record_train_metrics(self):
-        """Define and save metrics for training"""
+        raise NotImplementedError
 
     def _check_file_io(self, run_num):
         folder = 'Model' + str(run_num) + '/'
@@ -555,18 +568,18 @@ class Model:
     def _set_seed(self):
         tf.set_random_seed(self.flags['seed'])
         np.random.seed(self.flags['seed'])
+        self.print_log("Seed: %d" % self.flags['seed'])
 
-    def _set_summaries(self):
+    def _summaries(self):
         for var in tf.trainable_variables():
             tf.histogram_summary(var.name, var)
             print(var.name)
 
-    def _set_tf_functions(self):
+    def _set_tf_functions(self, vram=0.25):
         merged = tf.summary.merge_all()
         saver = tf.train.Saver()
         config = tf.ConfigProto(log_device_placement=False)
-        config.gpu_options.per_process_gpu_memory_fraction=0.45 # don't hog all vRAM
-        #config.operation_timeout_in_ms=5000
+        config.gpu_options.per_process_gpu_memory_fraction = vram
         sess = tf.InteractiveSession(config=config)
         writer = tf.summary.FileWriter(self.flags['restore_directory'], sess.graph)
         return merged, saver, sess, writer
@@ -596,46 +609,10 @@ class Model:
         save_path = self.saver.save(self.sess, checkpoint_name)
         self.print_log("Model saved in file: %s" % save_path)
 
-    def _record_training_step(self):
-        self.writer.add_summary(summary=self.summary, global_step=self.global_step)
+    def _record_training_step(self, summary):
+        self.writer.add_summary(summary=summary, global_step=self.global_step)
         self.step += 1
         self.global_step += 1
-
-    def train(self):
-        for i in range(len(self.flags['lr_iters'])):
-            self.step = 1
-            self.learn_rate = self.flags['lr_iters'][i][0]
-            self.iters_num = self.flags['lr_iters'][i][1]
-            self.print_log('Learning Rate: %d' % self.learn_rate)
-            self.print_log('Iterations: %d' % self.iters_num)
-            while self.step < self.iters_num:
-                print('Batch number: %d' % self.step)
-                self._generate_train_batch()
-                if self.step % self.flags['display_step'] != 0:
-                    self._run_train_iter()
-                else:
-                    self._run_train_summary_iter()
-                    self._record_train_metrics()
-                self._record_training_step()
-            self._save_model(section=i)
-
-    def valid(self):
-        self.print_log('Begin validation sequence')
-        valid_number = 0
-        while valid_number < self.num_valid_images:
-            valid_number = self._generate_valid_batch()
-            self._run_valid_iter()
-            print(valid_number)
-        self._record_valid_metrics()
-
-    def test(self):
-        self.print_log('Begin test sequence')
-        test_number = 0
-        while test_number < self.num_test_images:
-            test_number = self._generate_test_batch()
-            self._run_test_iter()
-            print(test_number)
-        self._record_test_metrics()
 
     @staticmethod
     def _check_flags(flags):
@@ -650,16 +627,19 @@ class Model:
 
     @staticmethod
     def make_directory(folder_path):
+        """ Make directory at folder_path if it does not exist """
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
     @staticmethod
     def print_log(message):
+        """ Print message to terminal and to logging document if applicable """
         print(message)
         logging.info(message)
 
     @staticmethod
     def check_str(obj):
+        """ Returns a string for various input types """
         if isinstance(obj, str):
             return obj
         if isinstance(obj, float):

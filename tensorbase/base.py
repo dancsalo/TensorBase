@@ -459,25 +459,22 @@ class Data:
         return (x * (1 / max_val) - 0.5) * 2  # returns scaled input ranging from [-1, 1]
 
     @classmethod
-    def batch_inputs(cls, read_and_decode_fn, tf_file, batch_size, mode="train"):
+    def batch_inputs(cls, read_and_decode_fn, tf_file, batch_size, mode="train", num_readers=4, num_threads=4, min_examples=5000):
         with tf.name_scope('batch_processing'):
             if mode == "train":
                 epochs = None
             else:  # test or validate or eval
                 epochs = 1
-            example_serialized = cls.queue_setup(tf_file, epochs, batch_size)
-            decoded_data = cls.thread_setup(read_and_decode_fn, example_serialized)
-            image_batch, label_batch = tf.train.batch_join(decoded_data, batch_size=batch_size, capacity=8 * batch_size)
-            return image_batch, label_batch
+            example_serialized = cls.queue_setup(tf_file, epochs, batch_size, num_readers, min_examples)
+            decoded_data = cls.thread_setup(read_and_decode_fn, example_serialized, num_threads)
+            return tf.train.batch_join(decoded_data, batch_size=batch_size)
 
     @staticmethod
-    def queue_setup(filename, epochs, batch_size, num_readers=4):
+    def queue_setup(filename, epochs, batch_size, num_readers, min_examples):
         """ Sets up the queue runners for data input """
-        examples_per_shard = 1024  # Approximate number of examples per shard.
-        min_queue_examples = examples_per_shard * 16
         filename_queue = tf.train.string_input_producer([filename], num_epochs=epochs, shuffle=True, capacity=16)
-        examples_queue = tf.RandomShuffleQueue(capacity=min_queue_examples + 3 * batch_size,
-                                               min_after_dequeue=min_queue_examples, dtypes=[tf.string])
+        examples_queue = tf.RandomShuffleQueue(capacity=min_examples + 3 * batch_size,
+                                               min_after_dequeue=min_examples, dtypes=[tf.string])
         enqueue_ops = list()
         for _ in range(num_readers):
             reader = tf.TFRecordReader()
@@ -488,15 +485,15 @@ class Data:
         return example_serialized
 
     @staticmethod
-    def thread_setup(read_and_decode_fn, example_serialized, num_preprocess_threads=4):
+    def thread_setup(read_and_decode_fn, example_serialized, num_threads):
         """ Sets up the threads within each reader """
         decoded_data = list()
-        for _ in range(num_preprocess_threads):
+        for _ in range(num_threads):
             decoded_data.append(read_and_decode_fn(example_serialized))
         return decoded_data
 
-    @classmethod
-    def init_threads(self, tf_session):
+    @staticmethod
+    def init_threads(tf_session):
         """ Starts threads running """
         coord = tf.train.Coordinator()
         threads = list()
@@ -504,8 +501,8 @@ class Data:
             threads.extend(qr.create_threads(tf_session, coord=coord, daemon=True, start=True))
         return threads, coord
 
-    @classmethod
-    def exit_threads(self, threads, coord):
+    @staticmethod
+    def exit_threads(threads, coord):
         """ Closes out all threads """
         coord.request_stop()
         coord.join(threads, stop_grace_period_secs=10)

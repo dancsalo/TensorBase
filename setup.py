@@ -2,7 +2,7 @@ from distutils.core import setup
 setup(
   name = 'tensorbase',
   packages = ['tensorbase'], # this must be the same as the name above
-  version = '0.1.3',
+  version = '0.3',
   description = 'Minimalistic TensorFlow Framework',
   author = 'Dan Salo',
   author_email = 'dancsalo@gmail.com',

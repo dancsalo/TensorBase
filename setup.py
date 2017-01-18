@@ -7,7 +7,7 @@ setup(
   author = 'Dan Salo',
   author_email = 'dancsalo@gmail.com',
   url = 'https://github.com/dancsalo/tensorbase', # use the URL to the github repo
-  download_url = 'https://github.com/dancsalo/tensorbase/tarball/0.1.3',
+  download_url = 'https://github.com/dancsalo/tensorbase/tarball/0.3',
   keywords = ['tensorflow','keras','prettytensor','data','machine learning','deep learning',],
   classifiers = [],
 )

@@ -65,6 +65,57 @@ class Layers:
             if activation_fn is not None:  # activation function
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+        
+    def convnet(self, filter_size, output_channels, stride=None, padding=None, activation_fn=None, b_value=None, s_value=None, bn=None):
+        '''
+        Shortcut for creating a 2D Convolutional Neural Network in one line
+        
+        Stacks multiple conv2d layers, with arguments for each layer defined in a list.        
+        If an argument is left as None, then the conv2d defaults are kept
+        :param filter_sizes: int. assumes square filter
+        :param output_channels: int
+        :param stride: int
+        :param padding: 'VALID' or 'SAME'
+        :param activation_fn: tf.nn function
+        :param b_value: float
+        :param s_value: float
+        '''        
+        # Number of layers to stack
+        depth = len(filter_size)
+        
+        # Default arguments where None was passed in
+        if stride is None:
+            stride = np.ones(depth)
+        if padding is None:
+            padding = ['SAME'] * depth
+        if activation_fn is None:
+            activation_fn = [tf.nn.relu] * depth
+        if b_value is None: 
+            b_value = np.zeros(depth)
+        if s_value is None:
+            s_value = np.ones(depth)
+        if bn is None:
+            bn = [True] * depth 
+            
+        # Make sure that number of layers is consistent
+        assert len(output_channels) == depth
+        assert len(stride) == depth
+        assert len(padding) == depth
+        assert len(activation_fn) == depth
+        assert len(b_value) == depth
+        assert len(s_value) == depth
+        assert len(bn) == depth
+        
+        # Stack convolutional layers
+        for l in range(depth):
+            self.input.conv2d(filter_size=filter_size[l],
+                              output_channels=[l],
+                              strides=stride[l],
+                              padding=padding[l],
+                              activation_fn=activation_fn[l],
+                              b_value=b_value[l], 
+                              s_value=s_value[l], 
+                              bn=bn[l])
 
     def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
         """

@@ -112,14 +112,14 @@ class Layers:
         
         # Stack convolutional layers
         for l in range(depth):
-            self.input.conv2d(filter_size=filter_size[l],
-                              output_channels=[l],
-                              strides=stride[l],
-                              padding=padding[l],
-                              activation_fn=activation_fn[l],
-                              b_value=b_value[l], 
-                              s_value=s_value[l], 
-                              bn=bn[l])
+            self.conv2d(filter_size=filter_size[l],
+                        output_channels=output_channels[l],
+                        stride=stride[l],
+                        padding=padding[l],
+                        activation_fn=activation_fn[l],
+                        b_value=b_value[l], 
+                        s_value=s_value[l], 
+                        bn=bn[l])
 
     def convnet(self, filter_sizes, output_channels, strides=None, padding=None, activation_fn=None, b_value=None,
                 s_value=None, bn=None):

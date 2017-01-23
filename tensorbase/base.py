@@ -170,7 +170,7 @@ class Layers:
                 self.input = tf.nn.dropout(self.input, keep_prob=keep_prob)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
-    def maxpool(self, k=2, globe=False):
+    def maxpool(self, k=2, s=None, globe=False):
         """
         Takes max value over a k x k area in each input map, or over the entire map (global = True)
         :param k: int
@@ -188,14 +188,18 @@ class Layers:
             else:
                 k1 = k
                 k2 = k
-                s1 = k
-                s2 = k
+                if s is None:
+                    s1 = k
+                    s2 = k
+                else:
+                    s1 = s
+                    s2 = s
                 padding = 'SAME'
             # Max Pool Function
             self.input = tf.nn.max_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
-    def avgpool(self, k=2, globe=False):
+    def avgpool(self, k=2, s=None, globe=False):
         """
         Averages the values over a k x k area in each input map, or over the entire map (global = True)
         :param k: int
@@ -213,8 +217,12 @@ class Layers:
             else:
                 k1 = k
                 k2 = k
-                s1 = k
-                s2 = k
+                if s is None:
+                    s1 = k
+                    s2 = k
+                else:
+                    s1 = s
+                    s2 = s
                 padding = 'SAME'
             # Average Pool Function
             self.input = tf.nn.avg_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)

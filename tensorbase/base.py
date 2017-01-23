@@ -111,14 +111,14 @@ class Layers:
         
         # Stack convolutional layers
         for l in range(depth):
-            self.input.conv2d(filter_size=filter_size[l],
-                              output_channels=[l],
-                              strides=stride[l],
-                              padding=padding[l],
-                              activation_fn=activation_fn[l],
-                              b_value=b_value[l], 
-                              s_value=s_value[l], 
-                              bn=bn[l])
+            self.conv2d(filter_size=filter_size[l],
+                        output_channels=output_channels[l],
+                        stride=stride[l],
+                        padding=padding[l],
+                        activation_fn=activation_fn[l],
+                        b_value=b_value[l], 
+                        s_value=s_value[l], 
+                        bn=bn[l])
 
     def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
         """

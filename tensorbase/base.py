@@ -49,6 +49,9 @@ class Layers:
 
             # Conv function
             input_channels = self.input.get_shape()[3]
+            if filter_size == 0:  # outputs a 1x1 feature map; used for FCN
+                filter_size = self.input.get_shape()[2]
+                padding = 'VALID'
             output_shape = [filter_size, filter_size, input_channels, output_channels]
             w = self.weight_variable(name='weights', shape=output_shape)
             self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding=padding)
@@ -459,7 +462,7 @@ class Data:
         return (x * (1 / max_val) - 0.5) * 2  # returns scaled input ranging from [-1, 1]
 
     @classmethod
-    def batch_inputs(cls, read_and_decode_fn, tf_file, batch_size, mode="train", num_readers=4, num_threads=4, min_examples=5000):
+    def batch_inputs(cls, read_and_decode_fn, tf_file, batch_size, mode="train", num_readers=4, num_threads=4, min_examples=1000):
         with tf.name_scope('batch_processing'):
             if mode == "train":
                 epochs = None

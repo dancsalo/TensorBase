@@ -479,8 +479,7 @@ class Data:
     @staticmethod
     def queue_setup(filename, mode, batch_size, num_readers, min_examples):
         """ Sets up the queue runners for data input """
-        filename_queue = tf.train.string_input_producer([filename], num_epochs=epochs, shuffle=True, capacity=16)
-
+        filename_queue = tf.train.string_input_producer([filename], shuffle=True, capacity=16)
         if mode == "train":
             examples_queue = tf.RandomShuffleQueue(capacity=min_examples + 3 * batch_size,
                                                    min_after_dequeue=min_examples, dtypes=[tf.string])

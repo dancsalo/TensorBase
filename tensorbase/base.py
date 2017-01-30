@@ -32,7 +32,7 @@ class Layers:
         self.input = x  # initialize input tensor
         self.count = {'conv': 0, 'deconv': 0, 'fc': 0, 'flat': 0, 'mp': 0, 'up': 0, 'ap': 0, 'rn': 0}
 
-    def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
+    def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', stoch=False, bn=True, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0):
         """
         2D Convolutional Layer.
         :param filter_size: int. assumes square filter
@@ -57,6 +57,14 @@ class Layers:
             self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding=padding)
 
             # Additional functions
+            if stoch is True:  # Draw feature map values from a normal distribution
+                mean = self.input
+                output_shape = [filter_size, filter_size, output_channels, output_channels]
+                w = self.weight_variable(name='weights_std', shape=output_shape)
+                intermediate = tf.nn.conv2d(mean, w, strides=[1, 1, 1, 1], padding='SAME')
+                std = tf.nn.softplus(intermediate)  # recursive call to conv2d
+                #std = tf.nn.softplus(self.input)
+                self.input = mean + tf.random_normal(tf.shape(self.input)) * std
             if bn is True:  # batch normalization
                 self.input = self.batch_norm(self.input)
             if b_value is not None:  # bias value

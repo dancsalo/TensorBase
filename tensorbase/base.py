@@ -76,12 +76,13 @@ class Layers:
             if activation_fn is not None:  # activation function
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-        
-    def convnet(self, filter_size, output_channels, stride=None, padding=None, activation_fn=None, b_value=None, s_value=None, bn=None):
+
+    def convnet(self, filter_size, output_channels, stride=None, padding=None, activation_fn=None, b_value=None,
+                s_value=None, bn=None):
         '''
         Shortcut for creating a 2D Convolutional Neural Network in one line
-        
-        Stacks multiple conv2d layers, with arguments for each layer defined in a list.        
+
+        Stacks multiple conv2d layers, with arguments for each layer defined in a list.
         If an argument is left as None, then the conv2d defaults are kept
         :param filter_sizes: int. assumes square filter
         :param output_channels: int
@@ -90,10 +91,10 @@ class Layers:
         :param activation_fn: tf.nn function
         :param b_value: float
         :param s_value: float
-        '''        
+        '''
         # Number of layers to stack
         depth = len(filter_size)
-        
+
         # Default arguments where None was passed in
         if stride is None:
             stride = np.ones(depth)
@@ -101,14 +102,14 @@ class Layers:
             padding = ['SAME'] * depth
         if activation_fn is None:
             activation_fn = [tf.nn.relu] * depth
-        if b_value is None: 
+        if b_value is None:
             b_value = np.zeros(depth)
         if s_value is None:
             s_value = np.ones(depth)
         if bn is None:
-            bn = [True] * depth 
-            
-        # Make sure that number of layers is consistent
+            bn = [True] * depth
+
+            # Make sure that number of layers is consistent
         assert len(output_channels) == depth
         assert len(stride) == depth
         assert len(padding) == depth
@@ -116,7 +117,7 @@ class Layers:
         assert len(b_value) == depth
         assert len(s_value) == depth
         assert len(bn) == depth
-        
+
         # Stack convolutional layers
         for l in range(depth):
             self.conv2d(filter_size=filter_size[l],
@@ -124,11 +125,12 @@ class Layers:
                         stride=stride[l],
                         padding=padding[l],
                         activation_fn=activation_fn[l],
-                        b_value=b_value[l], 
-                        s_value=s_value[l], 
+                        b_value=b_value[l],
+                        s_value=s_value[l],
                         bn=bn[l])
 
-    def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
+    def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu,
+                 b_value=0.0, s_value=1.0, bn=True):
         """
         2D Deconvolutional Layer
         :param filter_size: int. assumes square filter
@@ -183,9 +185,9 @@ class Layers:
         self.count['flat'] += 1
         scope = 'flat_' + str(self.count['flat'])
         with tf.variable_scope(scope):
-
             # Reshape function
-            input_nodes = tf.Dimension(self.input.get_shape()[1] * self.input.get_shape()[2] * self.input.get_shape()[3])
+            input_nodes = tf.Dimension(
+                self.input.get_shape()[1] * self.input.get_shape()[2] * self.input.get_shape()[3])
             output_shape = tf.pack([-1, input_nodes])
             self.input = tf.reshape(self.input, output_shape)
 
@@ -286,7 +288,7 @@ class Layers:
             # Average Pool Function
             self.input = tf.nn.avg_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-    
+
     def res_layer(self, output_channels, filter_size=3, stride=1, activation_fn=tf.nn.relu):
         """
         Residual Layer: Input -> BN, Act_fn, Conv1, BN, Act_fn, Conv 2 -> Output.  Return: Input + Output
@@ -335,7 +337,7 @@ class Layers:
             # Add input and output for final return
             self.input = self.input + additive_output
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-            
+
     def noisy_and(self, num_classes):
         """ Multiple Instance Learning (MIL), flexible pooling function
         :param num_classes: int, determine number of output maps
@@ -346,7 +348,8 @@ class Layers:
             a = self.const_variable(name='a', shape=[1], value=1.0)
             b = self.const_variable(name='b', shape=[1, num_classes], value=0.0)
             mean = tf.reduce_mean(self.input, axis=[1, 2])
-            self.input = (tf.nn.sigmoid(a*(mean-b))-tf.nn.sigmoid(-a*b))/(tf.sigmoid(a*(1-b))-tf.sigmoid(-a*b))
+            self.input = (tf.nn.sigmoid(a * (mean - b)) - tf.nn.sigmoid(-a * b)) / (
+            tf.sigmoid(a * (1 - b)) - tf.sigmoid(-a * b))
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
     def get_output(self):
@@ -390,7 +393,8 @@ class Layers:
         :return: tf variable
         """
         w = tf.get_variable(name=name, shape=shape, initializer=init.variance_scaling_initializer())
-        weights_norm = tf.reduce_sum(tf.nn.l2_loss(w), name=name + '_norm')  # Should user want to optimize weight decay
+        weights_norm = tf.reduce_sum(tf.nn.l2_loss(w),
+                                     name=name + '_norm')  # Should user want to optimize weight decay
         tf.add_to_collection('weight_losses', weights_norm)
         return w
 
@@ -404,7 +408,6 @@ class Layers:
         """
         return tf.get_variable(name, shape, initializer=tf.constant_initializer(value))
 
-
 class Data:
     """
     A Class to handle data I/O and batching in TensorFlow.
@@ -415,6 +418,7 @@ class Data:
         - That can't be loaded into memory all at once.
         - That use queueing and threading fuctions in TesnorFlow
     """
+
     def __init__(self, flags, valid_percent=0.2, test_percent=0.15):
         self.flags = flags
         train_images, train_labels, self.test_images, self.test_labels = self.load_data(test_percent)
@@ -459,7 +463,6 @@ class Data:
         start = self.index_in_train_epoch
         self.index_in_train_epoch += batch_size
         if self.index_in_train_epoch > self.num_train_images:
-
             # Finished epoch
             self.train_epochs_completed += 1
 
@@ -517,7 +520,7 @@ class Data:
     @property
     def num_valid_images(self):
         return self._num_valid_images
-    
+
     @staticmethod
     def img_norm(x, max_val=255):
         """
@@ -529,7 +532,8 @@ class Data:
         return (x * (1 / max_val) - 0.5) * 2  # returns scaled input ranging from [-1, 1]
 
     @classmethod
-    def batch_inputs(cls, read_and_decode_fn, tf_file, batch_size, mode="train", num_readers=4, num_threads=4, min_examples=1000):
+    def batch_inputs(cls, read_and_decode_fn, tf_file, batch_size, mode="train", num_readers=4, num_threads=4,
+                     min_examples=1000):
         with tf.name_scope('batch_processing'):
             example_serialized = cls.queue_setup(tf_file, mode, batch_size, num_readers, min_examples)
             decoded_data = cls.thread_setup(read_and_decode_fn, example_serialized, num_threads)
@@ -582,8 +586,10 @@ class Model:
     Methods:
         See list in __init__() function
     """
-    def __init__(self, flags, run_num, vram=0.25):
+
+    def __init__(self, flags, run_num, vram=0.25, restore=None):
         print(flags)
+        self.restore = restore
 
         # Define constants
         self.global_step = 0
@@ -606,12 +612,12 @@ class Model:
         self._summaries()
         self.merged, self.saver, self.sess, self.writer = self._set_tf_functions(vram)
         self._initialize_model()
-    
+
     def __enter__(self):
         return self
 
     def __exit__(self, *err):
-        self.close()   
+        self.close()
 
     def _data(self):
         """Define data"""
@@ -627,9 +633,15 @@ class Model:
 
     def _check_file_io(self, run_num):
         folder = 'Model' + str(run_num) + '/'
-        self.flags['restore_directory'] = self.flags['save_directory'] + self.flags['model_directory'] + folder
-        self.make_directory(self.flags['restore_directory'])
-        logging.basicConfig(filename=self.flags['restore_directory'] + 'ModelInformation.log', level=logging.INFO)
+        if self.restore is None:
+            folder_restore = folder
+        else:
+            folder_restore = 'Model' + str(self.restore) + '/'
+        self.flags['restore_directory'] = self.flags['save_directory'] + self.flags[
+            'model_directory'] + folder_restore
+        logging_directory = self.flags['save_directory'] + self.flags['model_directory'] + folder
+        self.make_directory(logging_directory)
+        logging.basicConfig(filename=logging_directory + 'ModelInformation.log', level=logging.INFO)
 
     def _set_seed(self):
         tf.set_random_seed(self.flags['seed'])
@@ -651,7 +663,7 @@ class Model:
         return merged, saver, sess, writer
 
     def _restore(self):
-        new_saver = tf.train.import_meta_graph('./' + self.flags['restore_directory'] + self.flags['restore_file'])
+        new_saver = tf.train.import_meta_graph(self.flags['restore_directory'] + self.flags['restore_file'])
         new_saver.restore(self.sess, tf.train.latest_checkpoint('./' + self.flags['restore_directory']))
         self.print_log("Model restored from %s" % self.flags['restore_file'])
 

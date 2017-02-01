@@ -182,7 +182,7 @@ class Layers:
                 enc_mean = self.dec_ladder[self.stoch_count_dec][0]
                 enc_std = self.dec_ladder[self.stoch_count_dec][1]
                 self.stoch_count_dec += 1
-                with tf.variable_scope("stoch"):
+                with tf.variable_scope("ladder"):
                     input_shape = [enc_mean.get_shape()[1], enc_mean.get_shape()[2], enc_mean.get_shape()[3]]
                     w_std = self.weight_variable(name='weights_mean', shape=input_shape)
                     w_mean = self.weight_variable(name='weights_std', shape=input_shape)
@@ -198,7 +198,8 @@ class Layers:
                         self.input = mean + tf.random_normal(tf.shape(self.input)) * std
             if stoch is True:  # Draw sample from Normal Layer
                 mean, std = tf.split(3, 2, self.input)
-                self.input = mean + tf.random_normal(tf.shape(self.input)) * std
+                self.input = mean + tf.random_normal(tf.shape(mean)) * std
+                output_channels = int(output_channels/2)
             if bn is True:  # batch normalization
                 self.input = self.batch_norm(self.input)
             if b_value is not None:  # bias value
@@ -614,6 +615,7 @@ class Data:
         coord.request_stop()
         coord.join(threads, stop_grace_period_secs=10)
 
+
 class Model:
     """
     A Class for easy Model Training.
@@ -673,9 +675,10 @@ class Model:
             folder_restore = 'Model' + str(self.restore) + '/'
         self.flags['restore_directory'] = self.flags['save_directory'] + self.flags[
             'model_directory'] + folder_restore
-        logging_directory = self.flags['save_directory'] + self.flags['model_directory'] + folder
-        self.make_directory(logging_directory)
-        logging.basicConfig(filename=logging_directory + 'ModelInformation.log', level=logging.INFO)
+        self.flags['logging_directory'] = self.flags['save_directory'] + self.flags[
+            'model_directory'] + folder
+        self.make_directory(self.flags['logging_directory'])
+        logging.basicConfig(filename=self.flags['logging_directory'] + 'ModelInformation.log', level=logging.INFO)
 
     def _set_seed(self):
         tf.set_random_seed(self.flags['seed'])
@@ -693,7 +696,7 @@ class Model:
         config = tf.ConfigProto(log_device_placement=False)
         config.gpu_options.per_process_gpu_memory_fraction = vram
         sess = tf.InteractiveSession(config=config)
-        writer = tf.summary.FileWriter(self.flags['restore_directory'], sess.graph)
+        writer = tf.summary.FileWriter(self.flags['logging_directory'], sess.graph)
         return merged, saver, sess, writer
 
     def _restore(self):
@@ -717,7 +720,7 @@ class Model:
 
     def _save_model(self, section):
         self.print_log("Optimization Finished!")
-        checkpoint_name = self.flags['restore_directory'] + 'part_%d' % section + '.ckpt'
+        checkpoint_name = self.flags['logging_directory'] + 'part_%d' % section + '.ckpt'
         save_path = self.saver.save(self.sess, checkpoint_name)
         self.print_log("Model saved in file: %s" % save_path)
 
@@ -725,7 +728,6 @@ class Model:
         self.writer.add_summary(summary=summary, global_step=self.global_step)
         self.step += 1
         self.global_step += 1
-
 
     @staticmethod
     def make_directory(folder_path):

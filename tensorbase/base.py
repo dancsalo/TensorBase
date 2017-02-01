@@ -669,10 +669,7 @@ class Model:
 
     def _check_file_io(self, run_num):
         folder = 'Model' + str(run_num) + '/'
-        if self.restore is None:
-            folder_restore = folder
-        else:
-            folder_restore = 'Model' + str(self.restore) + '/'
+        folder_restore = 'Model' + str(self.restore) + '/'
         self.flags['restore_directory'] = self.flags['save_directory'] + self.flags[
             'model_directory'] + folder_restore
         self.flags['logging_directory'] = self.flags['save_directory'] + self.flags[

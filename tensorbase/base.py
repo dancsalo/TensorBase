@@ -324,22 +324,25 @@ class Layers:
             self.input = tf.nn.avg_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
-    def res_layer(self, output_channels, filter_size=3, stride=1, activation_fn=tf.nn.relu):
+    def res_layer(self, output_channels, filter_size=3, stride=1, activation_fn=tf.nn.relu, bottle=False):
         """
         Residual Layer: Input -> BN, Act_fn, Conv1, BN, Act_fn, Conv 2 -> Output.  Return: Input + Output
-        If stride > 1, decrease dims of Input by passing through a 1 x 1 Conv Layer
+        If stride > 1 or number of filters changes, decrease dims of Input by passing through a 1 x 1 Conv Layer
+        The bottle option changes the Residual layer blocks to the bottleneck structure
         :param output_channels: int
         :param filter_size: int. assumes square filter
         :param stride: int
         :param activation_fn: tf.nn function
+        :param bottle: boolean 
         """
         self.count['rn'] += 1
         scope = 'resnet_' + str(self.count['rn'])
         input_channels = self.input.get_shape()[3]
         with tf.variable_scope(scope):
 
-            # Determine Additive Output Based on Stride in First Conv Layer.
-            if stride != 1:  # Decrease Input dimension with 1 x 1 Conv Layer with stride > 1
+            # Determine Additive Output if dimensions change
+            # Decrease Input dimension with 1 x 1 Conv Layer with stride > 1
+            if (stride != 1) or (input_channels != output_channels):  
                 with tf.variable_scope('conv0'):
                     output_shape = [1, 1, input_channels, output_channels]
                     w = self.weight_variable(name='weights', shape=output_shape)
@@ -351,23 +354,37 @@ class Layers:
 
             # First Conv Layer. Implement stride in this layer if desired.
             with tf.variable_scope('conv1'):
-                output_shape = [filter_size, filter_size, input_channels, output_channels]
+                fs = 1 if bottle else filter_size
+                oc = output_channels//4 if bottle else output_channels
+                output_shape = [fs, fs, input_channels, oc]
                 w = self.weight_variable(name='weights', shape=output_shape)
                 self.input = self.batch_norm(self.input)
                 self.input = activation_fn(self.input)
                 self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding='SAME')
-                b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
+                b = self.const_variable(name='bias', shape=[oc], value=0.0)
                 self.input = tf.add(self.input, b)
             # Second Conv Layer
             with tf.variable_scope('conv2'):
                 input_channels = self.input.get_shape()[3]
-                output_shape = [filter_size, filter_size, input_channels, output_channels]
+                oc = output_channels//4 if bottle else output_channels
+                output_shape = [filter_size, filter_size, input_channels, oc]
                 w = self.weight_variable(name='weights', shape=output_shape)
                 self.input = self.batch_norm(self.input)
                 self.input = activation_fn(self.input)
                 self.input = tf.nn.conv2d(self.input, w, strides=[1, 1, 1, 1], padding='SAME')
-                b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
+                b = self.const_variable(name='bias', shape=[oc], value=0.0)
                 self.input = tf.add(self.input, b)
+            if bottle:
+                # Third Conv Layer
+                with tf.variable_scope('conv3'):
+                    input_channels = self.input.get_shape()[3]
+                    output_shape = [1, 1, input_channels, output_channels]
+                    w = self.weight_variable(name='weights', shape=output_shape)
+                    self.input = self.batch_norm(self.input)
+                    self.input = activation_fn(self.input)
+                    self.input = tf.nn.conv2d(self.input, w, strides=[1, 1, 1, 1], padding='SAME')
+                    b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
+                    self.input = tf.add(self.input, b)
 
             # Add input and output for final return
             self.input = self.input + additive_output

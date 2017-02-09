@@ -16,6 +16,8 @@ import tensorflow.contrib.layers as init
 import math
 import os
 import datetime
+import tensorflow.contrib.slim as slim
+from tensorflow.python.training import saver as tf_saver
 
 
 class Layers:
@@ -31,11 +33,8 @@ class Layers:
         """
         self.input = x  # initialize input tensor
         self.count = {'conv': 0, 'deconv': 0, 'fc': 0, 'flat': 0, 'mp': 0, 'up': 0, 'ap': 0, 'rn': 0}
-        self.enc_ladder = dict()
-        self.stoch_count = 0
-        self.stoch_count_dec = 0
 
-    def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', stoch=False, bn=True, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0):
+    def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', stoch=False, bn=True, test=False, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0):
         """
         2D Convolutional Layer.
         :param filter_size: int. assumes square filter
@@ -59,17 +58,6 @@ class Layers:
             w = self.weight_variable(name='weights', shape=output_shape)
             self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding=padding)
 
-            # Additional functions
-            if stoch is True:  # Draw feature map values from a normal distribution
-                with tf.variable_scope("stoch"):
-                    input_shape = [self.input.get_shape()[1], self.input.get_shape()[2], self.input.get_shape()[3]]
-                    w_std = self.weight_variable(name='weights_mean', shape=input_shape)
-                    w_mean = self.weight_variable(name='weights_std', shape=input_shape)
-                    mean = self.input * w_mean
-                    std = tf.nn.softplus(self.input * w_std)
-                    self.enc_ladder[self.stoch_count] = (mean, std)
-                    self.stoch_count += 1
-                    self.input = mean + tf.random_normal(tf.shape(self.input)) * std
             if bn is True:  # batch normalization
                 self.input = self.batch_norm(self.input)
             if b_value is not None:  # bias value
@@ -81,18 +69,6 @@ class Layers:
             if activation_fn is not None:  # activation function
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-
-    def get_ladder_maps(self):
-        """
-        Returns a dictionary with tuples of (mean, std) for each conv2d layer in the model.
-        :return: dict, tuples indexed with integers starting at 1
-        """
-        return self.enc_ladder
-
-    def set_dec_ladder(self, mapping, ladder_maps):
-        self.dec_ladder = dict()
-        for layer_num in ladder_maps:
-            self.dec_ladder[mapping[layer_num]] = ladder_maps[layer_num]
 
     def convnet(self, filter_size, output_channels, stride=None, padding=None, activation_fn=None, b_value=None,
                 s_value=None, bn=None):
@@ -176,30 +152,6 @@ class Layers:
             deconv_out_shape = tf.pack([batch_size, out_rows, out_cols, output_channels])
             self.input = tf.nn.conv2d_transpose(self.input, w, deconv_out_shape, [1, stride, stride, 1], padding)
 
-            # Additional functions
-            if ladder is not None:
-                stoch = False
-                enc_mean = self.dec_ladder[self.stoch_count_dec][0]
-                enc_std = self.dec_ladder[self.stoch_count_dec][1]
-                self.stoch_count_dec += 1
-                with tf.variable_scope("ladder"):
-                    input_shape = [enc_mean.get_shape()[1], enc_mean.get_shape()[2], enc_mean.get_shape()[3]]
-                    w_std = self.weight_variable(name='weights_mean', shape=input_shape)
-                    w_mean = self.weight_variable(name='weights_std', shape=input_shape)
-                    mean = self.input * w_mean
-                    std = tf.nn.softplus(self.input * w_std)
-                    if ladder == 1:  # LVAE Implementation
-                        new_std = 1/(enc_std**2 + std**2)
-                        new_mean = new_std * (enc_mean * (1/enc_std**2) + mean * (1/std**2))
-                        self.input = new_mean + tf.random_normal(tf.shape(self.input)) * new_std
-                    elif ladder == 2:  # BLN Implementation
-                        raise NotImplementedError
-                    else:
-                        self.input = mean + tf.random_normal(tf.shape(self.input)) * std
-            if stoch is True:  # Draw sample from Normal Layer
-                mean, std = tf.split(3, 2, self.input)
-                self.input = mean + tf.random_normal(tf.shape(mean)) * std
-                output_channels = int(output_channels/2)
             if bn is True:  # batch normalization
                 self.input = self.batch_norm(self.input)
             if b_value is not None:  # bias value
@@ -231,7 +183,8 @@ class Layers:
                 self.input = tf.nn.dropout(self.input, keep_prob=keep_prob)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
-    def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, b_value=0.0, s_value=None, bn=False):
+    def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, stoch=False, test=False, ladder=None, b_value=0.0,
+           s_value=None, bn=False):
         """
         Fully Connected Layer
         :param output_nodes: int
@@ -251,7 +204,6 @@ class Layers:
             w = self.weight_variable(name='weights', shape=output_shape)
             self.input = tf.matmul(self.input, w)
 
-            # Additional Functions
             if bn is True:  # batch normalization
                 self.input = self.batch_norm(self.input, 'fc')
             if b_value is not None:  # bias value
@@ -623,9 +575,10 @@ class Model:
         See list in __init__() function
     """
 
-    def __init__(self, flags, run_num, vram=0.25, restore=None):
+    def __init__(self, flags, run_num, vram=0.25, restore=None, restore_slim=None):
         print(flags)
         self.restore = restore
+        flags['restore_slim_file'] = restore_slim
 
         # Define constants
         self.global_step = 0
@@ -706,11 +659,18 @@ class Model:
         self.print_log('Batch_size: ' + self.check_str(self.flags['batch_size']))
         self.print_log('Model: ' + self.check_str(self.flags['model_directory']))
 
+    def _restore_slim(self):
+        variables_to_restore = slim.get_model_variables()
+        saver = tf_saver.Saver(variables_to_restore)
+        saver.restore(self.sess, self.flags['restore_slim_file'])
+
     def _initialize_model(self):
         self._setup_metrics()
         self.sess.run(tf.local_variables_initializer())
         if self.flags['restore'] is True:
             self._restore()
+        elif self.flags['restore_slim_file'] is not None:
+            self._restore_slim()
         else:
             self.sess.run(tf.global_variables_initializer())
             self.print_log("Model training from scratch.")

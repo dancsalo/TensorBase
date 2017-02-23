@@ -77,7 +77,7 @@ class Layers:
                 self.input = tf.add(self.input, b)
             if s_value is not None:  # scale value
                 s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
-                self.input = tf.mul(self.input, s)
+                self.input = tf.multiply(self.input, s)
             if activation_fn is not None:  # activation function
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
@@ -173,7 +173,7 @@ class Layers:
             input_channels = self.input.get_shape()[3]
             output_shape = [filter_size, filter_size, output_channels, input_channels]
             w = self.weight_variable(name='weights', shape=output_shape)
-            deconv_out_shape = tf.pack([batch_size, out_rows, out_cols, output_channels])
+            deconv_out_shape = tf.stack([batch_size, out_rows, out_cols, output_channels])
             self.input = tf.nn.conv2d_transpose(self.input, w, deconv_out_shape, [1, stride, stride, 1], padding)
 
             # Additional functions
@@ -197,7 +197,7 @@ class Layers:
                     else:
                         self.input = mean + tf.random_normal(tf.shape(self.input)) * std
             if stoch is True:  # Draw sample from Normal Layer
-                mean, std = tf.split(3, 2, self.input)
+                mean, std = tf.split(axis=3, num_or_size_splits=2, value=self.input)
                 self.input = mean + tf.random_normal(tf.shape(mean)) * std
                 output_channels = int(output_channels/2)
             if bn is True:  # batch normalization
@@ -207,7 +207,7 @@ class Layers:
                 self.input = tf.add(self.input, b)
             if s_value is not None:  # scale value
                 s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
-                self.input = tf.mul(self.input, s)
+                self.input = tf.multiply(self.input, s)
             if activation_fn is not None:  # non-linear activation function
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))  # print shape of output
@@ -223,7 +223,7 @@ class Layers:
             # Reshape function
             input_nodes = tf.Dimension(
                 self.input.get_shape()[1] * self.input.get_shape()[2] * self.input.get_shape()[3])
-            output_shape = tf.pack([-1, input_nodes])
+            output_shape = tf.stack([-1, input_nodes])
             self.input = tf.reshape(self.input, output_shape)
 
             # Dropout function
@@ -259,7 +259,7 @@ class Layers:
                 self.input = tf.add(self.input, b)
             if s_value is not None:  # scale value
                 s = self.const_variable(name='scale', shape=[output_nodes], value=s_value)
-                self.input = tf.mul(self.input, s)
+                self.input = tf.multiply(self.input, s)
             if activation_fn is not None:  # activation function
                 self.input = activation_fn(self.input)
             if keep_prob != 1:  # dropout function
@@ -701,7 +701,7 @@ class Model:
 
     def _summaries(self):
         for var in tf.trainable_variables():
-            tf.histogram_summary(var.name, var)
+            tf.summary.histogram(var.name, var)
             print(var.name)
 
     def _set_tf_functions(self, vram=0.25):

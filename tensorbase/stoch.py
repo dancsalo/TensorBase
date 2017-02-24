@@ -4,8 +4,9 @@ import math
 
 
 class StochLayer:
-    def __init__(self, x, num_latent, eq_samples, iw_samples):
+    def __init__(self, x, num_latent, eq_samples, iw_samples, scope):
         self.x = x
+        self.scope = scope
         self.batch_size = self.x.get_shape()[0]
         self.num_latent = num_latent
         self.params = self.compute_params()
@@ -69,13 +70,13 @@ class GaussianLayerFC(StochLayer):
 
 
 class GaussianLayerConv(StochLayer):
-    def __init__(self, x, num_latent, eq_samples=1, iw_samples=1):
-        super().__init__(x, num_latent, eq_samples, iw_samples)
+    def __init__(self, x, num_latent, eq_samples=1, iw_samples=1, scope=1):
+        super().__init__(x, num_latent, eq_samples, iw_samples, scope)
         self.mu, self.std, self.y_dim, self.x_dim = self.params
 
     def compute_params(self):
 
-        with tf.variable_scope('gaussian'):
+        with tf.variable_scope('gaussian' + str(self.scope)):
             # Infer mu and std with fully connected layer
             model_mu = Layers(self.x)
             model_mu.conv2d(3, self.num_latent)

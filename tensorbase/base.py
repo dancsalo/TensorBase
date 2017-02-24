@@ -34,7 +34,7 @@ class Layers:
         self.input = x  # initialize input tensor
         self.count = {'conv': 0, 'deconv': 0, 'fc': 0, 'flat': 0, 'mp': 0, 'up': 0, 'ap': 0, 'rn': 0}
 
-    def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', stoch=False, bn=True, test=False, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0):
+    def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', bn=True, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0):
         """
         2D Convolutional Layer.
         :param filter_size: int. assumes square filter
@@ -117,8 +117,7 @@ class Layers:
                         padding=padding[l], activation_fn=activation_fn[l], b_value=b_value[l], s_value=s_value[l],
                         bn=bn[l])
 
-    def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', stoch=False, ladder=None,
-                 activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
+    def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
         """
         2D Deconvolutional Layer
         :param filter_size: int. assumes square filter
@@ -164,6 +163,53 @@ class Layers:
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))  # print shape of output
 
+    def deconvnet(self, filter_size, output_channels, stride=None, padding=None, activation_fn=None, b_value=None,
+                s_value=None, bn=None):
+        '''
+        Shortcut for creating a 2D Deconvolutional Neural Network in one line
+
+        Stacks multiple deconv2d layers, with arguments for each layer defined in a list.
+        If an argument is left as None, then the conv2d defaults are kept
+        :param filter_sizes: int. assumes square filter
+        :param output_channels: int
+        :param stride: int
+        :param padding: 'VALID' or 'SAME'
+        :param activation_fn: tf.nn function
+        :param b_value: float
+        :param s_value: float
+        '''
+        # Number of layers to stack
+        depth = len(filter_size)
+
+        # Default arguments where None was passed in
+        if stride is None:
+            stride = np.ones(depth)
+        if padding is None:
+            padding = ['SAME'] * depth
+        if activation_fn is None:
+            activation_fn = [tf.nn.relu] * depth
+        if b_value is None:
+            b_value = np.zeros(depth)
+        if s_value is None:
+            s_value = np.ones(depth)
+        if bn is None:
+            bn = [True] * depth
+
+            # Make sure that number of layers is consistent
+        assert len(output_channels) == depth
+        assert len(stride) == depth
+        assert len(padding) == depth
+        assert len(activation_fn) == depth
+        assert len(b_value) == depth
+        assert len(s_value) == depth
+        assert len(bn) == depth
+
+        # Stack convolutional layers
+        for l in range(depth):
+            self.deconv2d(filter_size=filter_size[l], output_channels=output_channels[l], stride=stride[l],
+                        padding=padding[l], activation_fn=activation_fn[l], b_value=b_value[l], s_value=s_value[l],
+                        bn=bn[l])
+
     def flatten(self, keep_prob=1):
         """
         Flattens 4D Tensor (from Conv Layer) into 2D Tensor (to FC Layer)
@@ -183,8 +229,7 @@ class Layers:
                 self.input = tf.nn.dropout(self.input, keep_prob=keep_prob)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
-    def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, stoch=False, test=False, ladder=None, b_value=0.0,
-           s_value=None, bn=False):
+    def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
         """
         Fully Connected Layer
         :param output_nodes: int
@@ -197,6 +242,13 @@ class Layers:
         self.count['fc'] += 1
         scope = 'fc_' + str(self.count['fc'])
         with tf.variable_scope(scope):
+
+            # Flatten if necessary
+            if len(self.input.get_shape()) == 4:
+                input_nodes = tf.Dimension(
+                    self.input.get_shape()[1] * self.input.get_shape()[2] * self.input.get_shape()[3])
+                output_shape = tf.pack([-1, input_nodes])
+                self.input = tf.reshape(self.input, output_shape)
 
             # Matrix Multiplication Function
             input_nodes = self.input.get_shape()[1]

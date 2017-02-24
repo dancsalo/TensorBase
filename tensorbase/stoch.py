@@ -87,15 +87,17 @@ class GaussianLayerConv(StochLayer):
                 model_var.conv2d(3, self.num_latent)
                 std = tf.nn.softplus(model_var.get_output())
 
+        # Height and width
+        h, w = tf.shape(self.x)[1], tf.shape(self.x)[2]
+
         # Make mu and std 4D for eq_samples and iw_samples
         std = tf.expand_dims(tf.expand_dims(std, 3), 3)
         mu = tf.expand_dims(tf.expand_dims(mu, 3), 3)
-        return mu, std
+        return mu, std, h, w
 
     def compute_samples(self):
         """ Sample from a Normal distribution with inferred mu and std """
-        h, w = tf.shape(self.x)[1], tf.shape(self.x)[2]
-        mu, std = self.params
+        mu, std, h, w = self.params
         if self.scope != 1:
             shape = tf.shape(self.x)
         else:
@@ -108,7 +110,10 @@ class GaussianLayerConv(StochLayer):
         """ Calculate Log Likelihood with particular mean and std
         x must be 2D. [batch_size * eqsamples* iwsamples, num_latent]
         """
-        x_reshape = tf.reshape(x, [self.batch_size, self.eq_samples, self.iw_samples, self.x_dim, self.y_dim, self.num_latent])
+        _, _, h, w = self.params
+        assert tf.shape(x)[1] == h
+        assert tf.shape(x)[2] == w
+        x_reshape = tf.reshape(x, [self.batch_size, self.eq_samples, self.iw_samples, h, w, self.num_latent])
         c = - 0.5 * math.log(2 * math.pi)
         if standard is False:
             density = c - tf.log(self.std + 1e-10) - (x_reshape - self.mu) ** 2 / (2 * self.std**2)

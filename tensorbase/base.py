@@ -70,7 +70,7 @@ class Layers:
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
-    def convnet(self, filter_size, output_channels, stride=None, padding=None, activation_fn=None, b_value=None,
+    def convnet(self, filter_sizes, output_channels, strides=None, padding=None, activation_fn=None, b_value=None,
                 s_value=None, bn=None):
         '''
         Shortcut for creating a 2D Convolutional Neural Network in one line
@@ -79,7 +79,7 @@ class Layers:
         If an argument is left as None, then the conv2d defaults are kept
         :param filter_sizes: int. assumes square filter
         :param output_channels: int
-        :param stride: int
+        :param strides: int
         :param padding: 'VALID' or 'SAME'
         :param activation_fn: tf.nn function
         :param b_value: float
@@ -89,8 +89,8 @@ class Layers:
         depth = len(filter_size)
 
         # Default arguments where None was passed in
-        if stride is None:
-            stride = np.ones(depth)
+        if strides is None:
+            strides = np.ones(depth)
         if padding is None:
             padding = ['SAME'] * depth
         if activation_fn is None:
@@ -104,7 +104,7 @@ class Layers:
 
             # Make sure that number of layers is consistent
         assert len(output_channels) == depth
-        assert len(stride) == depth
+        assert len(strides) == depth
         assert len(padding) == depth
         assert len(activation_fn) == depth
         assert len(b_value) == depth
@@ -113,7 +113,7 @@ class Layers:
 
         # Stack convolutional layers
         for l in range(depth):
-            self.conv2d(filter_size=filter_size[l], output_channels=output_channels[l], stride=stride[l],
+            self.conv2d(filter_size=filter_sizes[l], output_channels=output_channels[l], stride=strides[l],
                         padding=padding[l], activation_fn=activation_fn[l], b_value=b_value[l], s_value=s_value[l],
                         bn=bn[l])
 
@@ -163,7 +163,7 @@ class Layers:
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))  # print shape of output
 
-    def deconvnet(self, filter_size, output_channels, stride=None, padding=None, activation_fn=None, b_value=None,
+    def deconvnet(self, filter_sizes, output_channels, strides=None, padding=None, activation_fn=None, b_value=None,
                 s_value=None, bn=None):
         '''
         Shortcut for creating a 2D Deconvolutional Neural Network in one line
@@ -179,11 +179,11 @@ class Layers:
         :param s_value: float
         '''
         # Number of layers to stack
-        depth = len(filter_size)
+        depth = len(filter_sizes)
 
         # Default arguments where None was passed in
-        if stride is None:
-            stride = np.ones(depth)
+        if strides is None:
+            strides = np.ones(depth)
         if padding is None:
             padding = ['SAME'] * depth
         if activation_fn is None:
@@ -197,7 +197,7 @@ class Layers:
 
             # Make sure that number of layers is consistent
         assert len(output_channels) == depth
-        assert len(stride) == depth
+        assert len(strides) == depth
         assert len(padding) == depth
         assert len(activation_fn) == depth
         assert len(b_value) == depth
@@ -206,7 +206,7 @@ class Layers:
 
         # Stack convolutional layers
         for l in range(depth):
-            self.deconv2d(filter_size=filter_size[l], output_channels=output_channels[l], stride=stride[l],
+            self.deconv2d(filter_size=filter_sizes[l], output_channels=output_channels[l], stride=strides[l],
                         padding=padding[l], activation_fn=activation_fn[l], b_value=b_value[l], s_value=s_value[l],
                         bn=bn[l])
 

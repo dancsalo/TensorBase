@@ -47,8 +47,7 @@ class Layers:
         """
         self.count['conv'] += 1
         scope = 'conv_' + str(self.count['conv'])
-        with tf.variable_scope(scope) as sc:
-            print(sc)
+        with tf.variable_scope(scope):
 
             # Conv function
             input_channels = self.input.get_shape()[3]

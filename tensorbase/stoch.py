@@ -7,12 +7,12 @@ class StochLayer:
     def __init__(self, x, num_latent, eq_samples, iw_samples, scope):
         self.x = x
         self.scope = scope
+        self.iw_samples = iw_samples
+        self.eq_samples = eq_samples
         self.batch_size = self.x.get_shape()[0]
         self.num_latent = num_latent
         self.params = self.compute_params()
         self.samples = self.compute_samples()
-        self.iw_samples = iw_samples
-        self.eq_samples = eq_samples
 
     def compute_params(self):
         raise NotImplementedError

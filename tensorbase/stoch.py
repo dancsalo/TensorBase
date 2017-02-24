@@ -20,11 +20,9 @@ class StochLayer:
     def compute_samples(self):
         raise NotImplementedError
 
-    @property
     def get_params(self):
         return self.params
 
-    @property
     def get_samples(self):
         return self.samples
 

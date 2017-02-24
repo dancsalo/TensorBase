@@ -110,8 +110,8 @@ class GaussianLayerConv(StochLayer):
         x must be 2D. [batch_size * eqsamples* iwsamples, num_latent]
         """
         mu, std, h, w = self.params
-        assert tf.shape(x)[1] == h
-        assert tf.shape(x)[2] == w
+        # assert tf.shape(x)[1] == h
+        # assert tf.shape(x)[2] == w
         x_reshape = tf.reshape(x, [self.batch_size, self.eq_samples, self.iw_samples, h, w, self.num_latent])
         c = - 0.5 * math.log(2 * math.pi)
         if standard is False:

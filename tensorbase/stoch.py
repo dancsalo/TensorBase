@@ -94,7 +94,7 @@ class GaussianLayerConv(StochLayer):
 
     def compute_samples(self):
         """ Sample from a Normal distribution with inferred mu and std """
-        h, w = self.x.get_shape()[1], self.x.get_shape()[2]
+        h, w = tf.shape(self.x)[1], tf.shape(self.x)[2]
         mu, std = self.params
         eps = tf.random_normal(tf.pack([self.batch_size, self.eq_samples, self.iw_samples, h, w, self.num_latent]))
         z = tf.reshape(eps * std + mu, tf.pack([-1, h, w, self.num_latent]))

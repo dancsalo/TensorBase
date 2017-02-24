@@ -95,8 +95,9 @@ class GaussianLayerConv(StochLayer):
     def compute_samples(self):
         """ Sample from a Normal distribution with inferred mu and std """
         h, w = self.x.get_shape()[1], self.x.get_shape()[2]
+        mu, std = self.params
         eps = tf.random_normal(tf.pack([self.batch_size, self.eq_samples, self.iw_samples, h, w, self.num_latent]))
-        z = tf.reshape(eps * self.std + self.mu, [-1, h, w, self.num_latent])
+        z = tf.reshape(eps * std + mu, [-1, h, w, self.num_latent])
         return z
 
     def log_likelihood(self, x, standard=False):

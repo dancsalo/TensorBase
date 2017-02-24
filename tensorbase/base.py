@@ -86,7 +86,7 @@ class Layers:
         :param s_value: float
         '''
         # Number of layers to stack
-        depth = len(filter_size)
+        depth = len(filter_sizes)
 
         # Default arguments where None was passed in
         if strides is None:

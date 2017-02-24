@@ -4,14 +4,15 @@ import math
 
 
 class StochLayer:
-    def __init__(self, x, num_latent, eq_samples, iw_samples):
+    def __init__(self, x, num_latent, eq_samples, iw_samples, scope):
         self.x = x
-        self.batch_size = self.x.get_shape()[0]
-        self.num_latent = num_latent
-        self.params = self.compute_params
-        self.samples = self.compute_samples
+        self.scope = scope
         self.iw_samples = iw_samples
         self.eq_samples = eq_samples
+        self.batch_size = self.x.get_shape()[0]
+        self.num_latent = num_latent
+        self.params = self.compute_params()
+        self.samples = self.compute_samples()
 
     def compute_params(self):
         raise NotImplementedError
@@ -19,11 +20,9 @@ class StochLayer:
     def compute_samples(self):
         raise NotImplementedError
 
-    @property
     def get_params(self):
         return self.params
 
-    @property
     def get_samples(self):
         return self.samples
 
@@ -69,22 +68,24 @@ class GaussianLayerFC(StochLayer):
 
 
 class GaussianLayerConv(StochLayer):
-    def __init__(self, x, num_latent, eq_samples=1, iw_samples=1):
-        super().__init__(x, num_latent, eq_samples, iw_samples)
-        self.mu, self.std, self.y_dim, self.x_dim = self.params
+    def __init__(self, x, num_latent, eq_samples=1, iw_samples=1, scope=1):
+        super().__init__(x, num_latent, eq_samples, iw_samples, scope)
 
     def compute_params(self):
 
-        # Infer mu and std with fully connected layer
-        model_mu = Layers(self.x)
-        model_mu.conv2d(3, self.num_latent)
-        mu = model_mu.get_output()
-        model_var = Layers(self.x)
-        model_var.conv2d(3, self.num_latent)
-        std = tf.nn.softplus(model_var.get_output())
+        with tf.variable_scope('gaussian' + str(self.scope)):
+            # Infer mu and std with fully connected layer
+            with tf.variable_scope('mu'):
+                model_mu = Layers(self.x)
+                model_mu.conv2d(3, self.num_latent)
+                mu = model_mu.get_output()
+            with tf.variable_scope('std'):
+                model_var = Layers(self.x)
+                model_var.conv2d(3, self.num_latent)
+                std = tf.nn.softplus(model_var.get_output())
 
-        # Get x dimensions
-        h, w = self.x.get_shape()[1], self.x.get_shape()[2]
+        # Height and width
+        h, w = tf.shape(self.x)[1], tf.shape(self.x)[2]
 
         # Make mu and std 4D for eq_samples and iw_samples
         std = tf.expand_dims(tf.expand_dims(std, 3), 3)
@@ -93,18 +94,22 @@ class GaussianLayerConv(StochLayer):
 
     def compute_samples(self):
         """ Sample from a Normal distribution with inferred mu and std """
-        eps = tf.random_normal([self.batch_size, self.eq_samples, self.iw_samples, self.x_dim, self.y_dim, self.num_latent])
-        z = tf.reshape(eps * self.std + self.mu, [-1, self.x_dim, self.y_dim, self.num_latent])
+        mu, std, h, w = self.params
+        shape = tf.shape(mu)
+        eps = tf.random_normal(shape)
+        z = tf.reshape(eps * std + mu, tf.pack([-1, h, w, self.num_latent]))
         return z
 
-    def log_likelihood(self, x, standard=False):
+    def log_likelihood(self, x, x_dims=(128, 128), standard=False):
         """ Calculate Log Likelihood with particular mean and std
         x must be 2D. [batch_size * eqsamples* iwsamples, num_latent]
         """
-        x_reshape = tf.reshape(x, [self.batch_size, self.eq_samples, self.iw_samples, self.x_dim, self.y_dim, self.num_latent])
+        mu, std, h, w = self.params
+        shape = tf.pack([32, x_dims[0], x_dims[1], self.num_latent, 1, 1])
+        x_reshape = tf.reshape(x, shape)
         c = - 0.5 * math.log(2 * math.pi)
         if standard is False:
-            density = c - tf.log(self.std + 1e-10) - (x_reshape - self.mu) ** 2 / (2 * self.std**2)
+            density = c - tf.log(std + 1e-10) - (x_reshape - mu) ** 2 / (2 * std**2)
         else:
             density = c - x_reshape ** 2 / 2
         # sum over all importance weights. average over all eq_samples

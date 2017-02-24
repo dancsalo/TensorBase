@@ -72,7 +72,7 @@ class GaussianLayerFC(StochLayer):
 class GaussianLayerConv(StochLayer):
     def __init__(self, x, num_latent, eq_samples=1, iw_samples=1, scope=1):
         super().__init__(x, num_latent, eq_samples, iw_samples, scope)
-        self.mu, self.std, self.y_dim, self.x_dim = self.params
+        self.mu, self.std = self.params
 
     def compute_params(self):
 
@@ -87,17 +87,15 @@ class GaussianLayerConv(StochLayer):
                 model_var.conv2d(3, self.num_latent)
                 std = tf.nn.softplus(model_var.get_output())
 
-        # Get x dimensions
-        h, w = self.x.get_shape()[1], self.x.get_shape()[2]
-
         # Make mu and std 4D for eq_samples and iw_samples
         std = tf.expand_dims(tf.expand_dims(std, 3), 3)
         mu = tf.expand_dims(tf.expand_dims(mu, 3), 3)
-        return mu, std, h, w
+        return mu, std
 
     def compute_samples(self):
         """ Sample from a Normal distribution with inferred mu and std """
-        eps = tf.random_normal([self.batch_size, self.eq_samples, self.iw_samples, self.x_dim, self.y_dim, self.num_latent])
+        h, w = self.x.get_shape()[1], self.x.get_shape()[2]
+        eps = tf.random_normal([self.batch_size, self.eq_samples, self.iw_samples, h, w, self.num_latent])
         z = tf.reshape(eps * self.std + self.mu, [-1, self.x_dim, self.y_dim, self.num_latent])
         return z
 

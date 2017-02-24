@@ -8,8 +8,8 @@ class StochLayer:
         self.x = x
         self.batch_size = self.x.get_shape()[0]
         self.num_latent = num_latent
-        self.params = self.compute_params
-        self.samples = self.compute_samples
+        self.params = self.compute_params()
+        self.samples = self.compute_samples()
         self.iw_samples = iw_samples
         self.eq_samples = eq_samples
 

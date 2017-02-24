@@ -9,11 +9,14 @@ class StochLayer:
         self.batch_size = self.x.get_shape()[0]
         self.num_latent = num_latent
         self.params = self.compute_params
-        self.samples = self.get_samples
+        self.samples = self.compute_samples
         self.iw_samples = iw_samples
         self.eq_samples = eq_samples
 
     def compute_params(self):
+        raise NotImplementedError
+
+    def compute_samples(self):
         raise NotImplementedError
 
     @property

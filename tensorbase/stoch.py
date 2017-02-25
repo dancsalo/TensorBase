@@ -103,23 +103,19 @@ class GaussianLayerConv(StochLayer):
         z = tf.reshape(eps * std + mu, tf.pack([-1, h, w, self.num_latent]))
         return z
 
-    def log_likelihood(self, x, standard=False):
+    def log_likelihood(self, x, x_dims=(128, 128), standard=False):
         """ Calculate Log Likelihood with particular mean and std
         x must be 2D. [batch_size * eqsamples* iwsamples, num_latent]
         """
         mu, std, h, w = self.params
-        print(h)
-        print(w)
-        print(tf.shape(x))
-        #x_reshape = tf.reshape(x, tf.pack([self.batch_size, self.eq_samples, self.iw_samples, x.get_shape()[1], x.get_shape()[2], self.num_latent]))
-        #c = - 0.5 * math.log(2 * math.pi)
-        #if standard is False:
-        #    density = c - tf.log(std + 1e-10) - (x_reshape - mu) ** 2 / (2 * std**2)
-        #else:
-        #    density = c - x_reshape ** 2 / 2
+        x_reshape = tf.reshape(x, tf.pack([self.batch_size, self.eq_samples, self.iw_samples, x_dims[0], x_dims[1], self.num_latent]))
+        c = - 0.5 * math.log(2 * math.pi)
+        if standard is False:
+            density = c - tf.log(std + 1e-10) - (x_reshape - mu) ** 2 / (2 * std**2)
+        else:
+            density = c - x_reshape ** 2 / 2
         # sum over all importance weights. average over all eq_samples
-        #return tf.reduce_mean(tf.reduce_sum(density, axis=2), axis=(1, 2))
-        return h, w
+        return tf.reduce_mean(tf.reduce_sum(density, axis=2), axis=(1, 2))
 
 
 class BernoulliLayerFC(StochLayer):

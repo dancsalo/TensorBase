@@ -112,7 +112,7 @@ class GaussianLayerConv(StochLayer):
         print(w)
         # assert tf.shape(x)[1] == h
         # assert tf.shape(x)[2] == w
-        x_reshape = tf.reshape(x, tf.pack([self.batch_size, self.eq_samples, self.iw_samples, tf.shape(x)[1], tf.shape(x)[2], self.num_latent]))
+        x_reshape = tf.reshape(x, tf.pack([self.batch_size, self.eq_samples, self.iw_samples, x.get_shape()[1], x.get_shape()[2], self.num_latent]))
         c = - 0.5 * math.log(2 * math.pi)
         if standard is False:
             density = c - tf.log(std + 1e-10) - (x_reshape - mu) ** 2 / (2 * std**2)

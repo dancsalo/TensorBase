@@ -185,10 +185,7 @@ class Layers:
         if strides is None:
             strides = np.ones(depth)
         if padding is None:
-            padding = list()
-            padding.extend(['VALID'])
-            padding.extend(['SAME'] * (depth - 1))
-            print(padding)
+            padding = ['SAME'] * depth
         if activation_fn is None:
             activation_fn = [tf.nn.relu] * depth
         if b_value is None:

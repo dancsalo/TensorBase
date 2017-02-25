@@ -108,16 +108,17 @@ class GaussianLayerConv(StochLayer):
         x must be 2D. [batch_size * eqsamples* iwsamples, num_latent]
         """
         mu, std, h, w = self.params
-        #print(tf.shape(x))
-        #x_reshape = tf.reshape(x, tf.pack([self.batch_size, self.eq_samples, self.iw_samples, tf.shape(x)[1:]]))
-        #c = - 0.5 * math.log(2 * math.pi)
-        #if standard is False:
-        #    density = c - tf.log(std + 1e-10) - (x_reshape - mu) ** 2 / (2 * std**2)
-        #else:
-        #    density = c - x_reshape ** 2 / 2
+        print(h)
+        print(w)
+        print(tf.shape(x))
+        x_reshape = tf.reshape(x, tf.pack([self.batch_size, self.eq_samples, self.iw_samples, x.get_shape()[1], x.get_shape()[2], self.num_latent]))
+        c = - 0.5 * math.log(2 * math.pi)
+        if standard is False:
+            density = c - tf.log(std + 1e-10) - (x_reshape - mu) ** 2 / (2 * std**2)
+        else:
+            density = c - x_reshape ** 2 / 2
         # sum over all importance weights. average over all eq_samples
-        #return tf.reduce_mean(tf.reduce_sum(density, axis=2), axis=(1, 2))
-        return tf.shape(x)
+        return tf.reduce_mean(tf.reduce_sum(density, axis=2), axis=(1, 2))
 
 
 class BernoulliLayerFC(StochLayer):

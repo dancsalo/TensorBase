@@ -119,7 +119,7 @@ class GaussianLayerConv(StochLayer):
         #    density = c - x_reshape ** 2 / 2
         # sum over all importance weights. average over all eq_samples
         #return tf.reduce_mean(tf.reduce_sum(density, axis=2), axis=(1, 2))
-        return tf.shape(x)
+        return h, w
 
 
 class BernoulliLayerFC(StochLayer):

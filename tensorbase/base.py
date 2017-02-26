@@ -653,6 +653,7 @@ class Model:
         self._summaries()
         self.merged, self.saver, self.sess, self.writer = self._set_tf_functions(vram)
         self._initialize_model()
+        self._print_metrics()
 
     def __enter__(self):
         return self
@@ -738,6 +739,9 @@ class Model:
         self.writer.add_summary(summary=summary, global_step=self.global_step)
         self.step += 1
         self.global_step += 1
+
+    def _print_metrics(self):
+        """ To print out print_log statements """
 
     @staticmethod
     def make_directory(folder_path):

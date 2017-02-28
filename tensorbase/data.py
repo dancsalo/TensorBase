@@ -3,7 +3,6 @@
 """
 Author: Dan Salo
 Initial Commit: 12/5/2016
-
 Purpose: Class for MNIST
 Adapted from https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/datasets/mnist.py
 """

@@ -200,7 +200,7 @@ class Ladder(Layers):
                 self.input = tf.add(self.input, b)
             if s_value is not None:
                 s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
-                self.input = tf.mul(self.input, s)
+                self.input = tf.multiply(self.input, s)
             if activation_fn is not None:
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
@@ -230,7 +230,7 @@ class Ladder(Layers):
                 out_rows = input_height * row_stride
                 out_cols = input_width * col_stride
 
-            out_shape = tf.pack([batch_size, out_rows, out_cols, out_channels])
+            out_shape = tf.stack([batch_size, out_rows, out_cols, out_channels])
 
             self.input = tf.nn.conv2d_transpose(self.input, w, out_shape, [1, stride, stride, 1], padding)
             if bn is True:
@@ -246,7 +246,7 @@ class Ladder(Layers):
                 self.input = tf.add(self.input, b)
             if s_value is not None:
                 s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
-                self.input = tf.mul(self.input, s)
+                self.input = tf.multiply(self.input, s)
             if activation_fn is not None:
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
@@ -276,7 +276,7 @@ class Ladder(Layers):
                 self.input = tf.add(self.input, b)
             if s_value is not None:
                 s = self.const_variable(name='scale', shape=[output_nodes], value=s_value)
-                self.input = tf.mul(self.input, s)
+                self.input = tf.multiply(self.input, s)
             if activation_fn is not None:
                 self.input = activation_fn(self.input)
             if keep_prob != 1:

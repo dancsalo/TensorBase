@@ -1,6 +1,163 @@
 from .base import Layers
 import tensorflow as tf
 
+
+class BayesLadder(Layers):
+    def __init__(self, x):
+        super().__init__(x)
+        self.x = x
+        self.enc_ladder = dict()
+        self.dec_ladder = dict()
+        self.stoch_count = 0
+        self.stoch_count_dec = 0
+
+    def _latent(self, x):
+        if x is None:
+            mean = None
+            stddev = None
+            logits = None
+            class_predictions = None
+            z = self.epsilon
+        else:
+            enc_output = tf.reshape(x, [-1, self.flags['hidden_size'] * 2])
+            mean, stddev = tf.split(1, 2, enc_output)  # Compute latent variables (z) by calculating mean, stddev
+            stddev = tf.nn.softplus(stddev)
+            with tf.variable_scope("y_network"):
+                mlp = Layers(mean)
+                mlp.fc(self.flags['num_classes'])
+                logits = mlp.get_output()
+                class_predictions = tf.nn.softmax(logits)
+            z = (mean + self.epsilon * stddev) #* tf.cast(y_hat, tf.float32)
+        return mean, stddev, class_predictions, logits, z
+
+    def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', stoch=None, bn=True, test=False, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0):
+        """
+        2D Convolutional Layer.
+        :param filter_size: int. assumes square filter
+        :param output_channels: int
+        :param stride: int
+        :param padding: 'VALID' or 'SAME'
+        :param activation_fn: tf.nn function
+        :param b_value: float
+        :param s_value: float
+        """
+        self.count['conv'] += 1
+        scope = 'conv_' + str(self.count['conv'])
+        with tf.variable_scope(scope):
+
+            # Conv function
+            input_channels = self.input.get_shape()[3]
+            if filter_size == 0:  # outputs a 1x1 feature map; used for FCN
+                filter_size = self.input.get_shape()[2]
+                padding = 'VALID'
+            output_shape = [filter_size, filter_size, input_channels, output_channels]
+            w = self.weight_variable(name='weights', shape=output_shape)
+            self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding=padding)
+
+            # Additional functions
+            if stoch is not None:  # Draw feature map values from a normal distribution
+                if stoch == 'N':  # Normal
+                    output_shape = [3, 3, output_channels, 1]
+                    w2 = self.weight_variable(name='weights_mean', shape=output_shape)
+                    mean = tf.nn.conv2d(self.input, w2, strides=[1, 1, 1, 1], padding=padding)
+                    w3 = self.weight_variable(name='weights_std', shape=output_shape)
+                    std = tf.nn.conv2d(self.input, w3, strides=[1, 1, 1, 1], padding=padding)
+                    map_size = tf.pack([mean.get_shape()[1], mean.get_shape()[2]])
+                    z = mean + tf.random_normal(map_size) * std
+                if stoch == 'B':  # Bernoulli
+                    mean = 0
+                    map_size = tf.pack([mean.get_shape()[1], mean.get_shape()[2]])
+                with tf.variable_scope("stoch"):
+                    output_shape = tf.pack([self.input.get_shape()[1], self.input.get_shape()[2], 1, 1])
+                    w3 = self.weight_variable(name='weights_refinement', shape=output_shape)
+                    self.input = self.input + z * w3
+            if bn is True:  # batch normalization
+                self.input = self.batch_norm(self.input)
+            if b_value is not None:  # bias value
+                b = self.const_variable(name='bias', shape=[output_channels], value=b_value)
+                self.input = tf.add(self.input, b)
+            if s_value is not None:  # scale value
+                s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
+                self.input = tf.mul(self.input, s)
+            if activation_fn is not None:  # activation function
+                self.input = activation_fn(self.input)
+        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+
+    def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', stoch=False, ladder=None,
+                 activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
+        """
+        2D Deconvolutional Layer
+        :param filter_size: int. assumes square filter
+        :param output_channels: int
+        :param stride: int
+        :param padding: 'VALID' or 'SAME'
+        :param activation_fn: tf.nn function
+        :param b_value: float
+        :param s_value: float
+        """
+        self.count['deconv'] += 1
+        scope = 'deconv_' + str(self.count['deconv'])
+        with tf.variable_scope(scope):
+
+            # Calculate the dimensions for deconv function
+            batch_size = tf.shape(self.input)[0]
+            input_height = tf.shape(self.input)[1]
+            input_width = tf.shape(self.input)[2]
+
+            if padding == "VALID":
+                out_rows = (input_height - 1) * stride + filter_size
+                out_cols = (input_width - 1) * stride + filter_size
+            else:  # padding == "SAME":
+                out_rows = input_height * stride
+                out_cols = input_width * stride
+
+            # Deconv function
+            input_channels = self.input.get_shape()[3]
+            output_shape = [filter_size, filter_size, output_channels, input_channels]
+            w = self.weight_variable(name='weights', shape=output_shape)
+            deconv_out_shape = tf.pack([batch_size, out_rows, out_cols, output_channels])
+            self.input = tf.nn.conv2d_transpose(self.input, w, deconv_out_shape, [1, stride, stride, 1], padding)
+
+            # Additional functions
+            if ladder is not None:
+                stoch = False
+                enc_mean = self.dec_ladder[self.stoch_count_dec][0]
+                enc_std = self.dec_ladder[self.stoch_count_dec][1]
+                self.stoch_count_dec += 1
+                with tf.variable_scope("ladder"):
+                    input_shape = [enc_mean.get_shape()[1], enc_mean.get_shape()[2], enc_mean.get_shape()[3]]
+                    w_std = self.weight_variable(name='weights_mean', shape=input_shape)
+                    w_mean = self.weight_variable(name='weights_std', shape=input_shape)
+                    mean = self.input * w_mean
+                    std = tf.nn.softplus(self.input * w_std)
+                    if ladder == 1:  # LVAE Implementation
+                        eps = 1e-10
+                        new_std = 1 / ((enc_std + eps) ** 2 + (std + eps) ** 2)
+                        new_mean = new_std * (enc_mean * (1 / (enc_std + eps) ** 2) + mean * (1 / (std + eps) ** 2))
+                        self.input = new_mean + tf.random_normal(tf.shape(self.input)) * new_std
+                    elif ladder == 2:  # BLN Implementation
+                        raise NotImplementedError
+                    else:
+                        self.input = mean + tf.random_normal(tf.shape(self.input)) * std
+            if stoch is True:  # Draw sample from Normal Layer
+                mean, std = tf.split(3, 2, self.input)
+                self.input = mean + tf.random_normal(tf.shape(mean)) * std
+                output_channels = int(output_channels/2)
+            if bn is True:  # batch normalization
+                self.input = self.batch_norm(self.input)
+            if b_value is not None:  # bias value
+                b = self.const_variable(name='bias', shape=[output_channels], value=b_value)
+                self.input = tf.add(self.input, b)
+            if s_value is not None:  # scale value
+                s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
+                self.input = tf.mul(self.input, s)
+            if activation_fn is not None:  # non-linear activation function
+                self.input = activation_fn(self.input)
+        self.print_log(scope + ' output: ' + str(self.input.get_shape()))  # print shape of output
+
+
+
+
 class Ladder(Layers):
     def __init__(self, x, layer_num=0, z_noisy_dict=dict(), clean_batch=dict()):
         super().__init__(x)

@@ -16,6 +16,8 @@ import tensorflow.contrib.layers as init
 import math
 import os
 import datetime
+import tensorflow.contrib.slim as slim
+from tensorflow.python.training import saver as tf_saver
 
 
 class Layers:
@@ -31,11 +33,8 @@ class Layers:
         """
         self.input = x  # initialize input tensor
         self.count = {'conv': 0, 'deconv': 0, 'fc': 0, 'flat': 0, 'mp': 0, 'up': 0, 'ap': 0, 'rn': 0}
-        self.enc_ladder = dict()
-        self.stoch_count = 0
-        self.stoch_count_dec = 0
 
-    def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', stoch=False, bn=True, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0):
+    def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', bn=True, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0):
         """
         2D Convolutional Layer.
         :param filter_size: int. assumes square filter
@@ -59,17 +58,6 @@ class Layers:
             w = self.weight_variable(name='weights', shape=output_shape)
             self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding=padding)
 
-            # Additional functions
-            if stoch is True:  # Draw feature map values from a normal distribution
-                with tf.variable_scope("stoch"):
-                    input_shape = [self.input.get_shape()[1], self.input.get_shape()[2], self.input.get_shape()[3]]
-                    w_std = self.weight_variable(name='weights_mean', shape=input_shape)
-                    w_mean = self.weight_variable(name='weights_std', shape=input_shape)
-                    mean = self.input * w_mean
-                    std = tf.nn.softplus(self.input * w_std)
-                    self.enc_ladder[self.stoch_count] = (mean, std)
-                    self.stoch_count += 1
-                    self.input = mean + tf.random_normal(tf.shape(self.input)) * std
             if bn is True:  # batch normalization
                 self.input = self.batch_norm(self.input)
             if b_value is not None:  # bias value
@@ -77,24 +65,12 @@ class Layers:
                 self.input = tf.add(self.input, b)
             if s_value is not None:  # scale value
                 s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
-                self.input = tf.multiply(self.input, s)
+                self.input = tf.mul(self.input, s)
             if activation_fn is not None:  # activation function
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
-    def get_ladder_maps(self):
-        """
-        Returns a dictionary with tuples of (mean, std) for each conv2d layer in the model.
-        :return: dict, tuples indexed with integers starting at 1
-        """
-        return self.enc_ladder
-
-    def set_dec_ladder(self, mapping, ladder_maps):
-        self.dec_ladder = dict()
-        for layer_num in ladder_maps:
-            self.dec_ladder[mapping[layer_num]] = ladder_maps[layer_num]
-
-    def convnet(self, filter_size, output_channels, stride=None, padding=None, activation_fn=None, b_value=None,
+    def convnet(self, filter_sizes, output_channels, strides=None, padding=None, activation_fn=None, b_value=None,
                 s_value=None, bn=None):
         '''
         Shortcut for creating a 2D Convolutional Neural Network in one line
@@ -103,18 +79,18 @@ class Layers:
         If an argument is left as None, then the conv2d defaults are kept
         :param filter_sizes: int. assumes square filter
         :param output_channels: int
-        :param stride: int
+        :param strides: int
         :param padding: 'VALID' or 'SAME'
         :param activation_fn: tf.nn function
         :param b_value: float
         :param s_value: float
         '''
         # Number of layers to stack
-        depth = len(filter_size)
+        depth = len(filter_sizes)
 
         # Default arguments where None was passed in
-        if stride is None:
-            stride = np.ones(depth)
+        if strides is None:
+            strides = np.ones(depth)
         if padding is None:
             padding = ['SAME'] * depth
         if activation_fn is None:
@@ -128,7 +104,7 @@ class Layers:
 
             # Make sure that number of layers is consistent
         assert len(output_channels) == depth
-        assert len(stride) == depth
+        assert len(strides) == depth
         assert len(padding) == depth
         assert len(activation_fn) == depth
         assert len(b_value) == depth
@@ -137,12 +113,11 @@ class Layers:
 
         # Stack convolutional layers
         for l in range(depth):
-            self.conv2d(filter_size=filter_size[l], output_channels=output_channels[l], stride=stride[l],
+            self.conv2d(filter_size=filter_sizes[l], output_channels=output_channels[l], stride=strides[l],
                         padding=padding[l], activation_fn=activation_fn[l], b_value=b_value[l], s_value=s_value[l],
                         bn=bn[l])
 
-    def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', stoch=False, ladder=None,
-                 activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
+    def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
         """
         2D Deconvolutional Layer
         :param filter_size: int. assumes square filter
@@ -173,33 +148,9 @@ class Layers:
             input_channels = self.input.get_shape()[3]
             output_shape = [filter_size, filter_size, output_channels, input_channels]
             w = self.weight_variable(name='weights', shape=output_shape)
-            deconv_out_shape = tf.stack([batch_size, out_rows, out_cols, output_channels])
+            deconv_out_shape = tf.pack([batch_size, out_rows, out_cols, output_channels])
             self.input = tf.nn.conv2d_transpose(self.input, w, deconv_out_shape, [1, stride, stride, 1], padding)
 
-            # Additional functions
-            if ladder is not None:
-                stoch = False
-                enc_mean = self.dec_ladder[self.stoch_count_dec][0]
-                enc_std = self.dec_ladder[self.stoch_count_dec][1]
-                self.stoch_count_dec += 1
-                with tf.variable_scope("ladder"):
-                    input_shape = [enc_mean.get_shape()[1], enc_mean.get_shape()[2], enc_mean.get_shape()[3]]
-                    w_std = self.weight_variable(name='weights_mean', shape=input_shape)
-                    w_mean = self.weight_variable(name='weights_std', shape=input_shape)
-                    mean = self.input * w_mean
-                    std = tf.nn.softplus(self.input * w_std)
-                    if ladder == 1:  # LVAE Implementation
-                        new_std = 1/(enc_std**2 + std**2)
-                        new_mean = new_std * (enc_mean * (1/enc_std**2) + mean * (1/std**2))
-                        self.input = new_mean + tf.random_normal(tf.shape(self.input)) * new_std
-                    elif ladder == 2:  # BLN Implementation
-                        raise NotImplementedError
-                    else:
-                        self.input = mean + tf.random_normal(tf.shape(self.input)) * std
-            if stoch is True:  # Draw sample from Normal Layer
-                mean, std = tf.split(axis=3, num_or_size_splits=2, value=self.input)
-                self.input = mean + tf.random_normal(tf.shape(mean)) * std
-                output_channels = int(output_channels/2)
             if bn is True:  # batch normalization
                 self.input = self.batch_norm(self.input)
             if b_value is not None:  # bias value
@@ -207,10 +158,57 @@ class Layers:
                 self.input = tf.add(self.input, b)
             if s_value is not None:  # scale value
                 s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
-                self.input = tf.multiply(self.input, s)
+                self.input = tf.mul(self.input, s)
             if activation_fn is not None:  # non-linear activation function
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))  # print shape of output
+
+    def deconvnet(self, filter_sizes, output_channels, strides=None, padding=None, activation_fn=None, b_value=None,
+                s_value=None, bn=None):
+        '''
+        Shortcut for creating a 2D Deconvolutional Neural Network in one line
+
+        Stacks multiple deconv2d layers, with arguments for each layer defined in a list.
+        If an argument is left as None, then the conv2d defaults are kept
+        :param filter_sizes: int. assumes square filter
+        :param output_channels: int
+        :param stride: int
+        :param padding: 'VALID' or 'SAME'
+        :param activation_fn: tf.nn function
+        :param b_value: float
+        :param s_value: float
+        '''
+        # Number of layers to stack
+        depth = len(filter_sizes)
+
+        # Default arguments where None was passed in
+        if strides is None:
+            strides = np.ones(depth)
+        if padding is None:
+            padding = ['SAME'] * depth
+        if activation_fn is None:
+            activation_fn = [tf.nn.relu] * depth
+        if b_value is None:
+            b_value = np.zeros(depth)
+        if s_value is None:
+            s_value = np.ones(depth)
+        if bn is None:
+            bn = [True] * depth
+
+            # Make sure that number of layers is consistent
+        assert len(output_channels) == depth
+        assert len(strides) == depth
+        assert len(padding) == depth
+        assert len(activation_fn) == depth
+        assert len(b_value) == depth
+        assert len(s_value) == depth
+        assert len(bn) == depth
+
+        # Stack convolutional layers
+        for l in range(depth):
+            self.deconv2d(filter_size=filter_sizes[l], output_channels=output_channels[l], stride=strides[l],
+                        padding=padding[l], activation_fn=activation_fn[l], b_value=b_value[l], s_value=s_value[l],
+                        bn=bn[l])
 
     def flatten(self, keep_prob=1):
         """
@@ -223,7 +221,7 @@ class Layers:
             # Reshape function
             input_nodes = tf.Dimension(
                 self.input.get_shape()[1] * self.input.get_shape()[2] * self.input.get_shape()[3])
-            output_shape = tf.stack([-1, input_nodes])
+            output_shape = tf.pack([-1, input_nodes])
             self.input = tf.reshape(self.input, output_shape)
 
             # Dropout function
@@ -231,7 +229,7 @@ class Layers:
                 self.input = tf.nn.dropout(self.input, keep_prob=keep_prob)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
-    def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, b_value=0.0, s_value=None, bn=False):
+    def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
         """
         Fully Connected Layer
         :param output_nodes: int
@@ -245,13 +243,19 @@ class Layers:
         scope = 'fc_' + str(self.count['fc'])
         with tf.variable_scope(scope):
 
+            # Flatten if necessary
+            if len(self.input.get_shape()) == 4:
+                input_nodes = tf.Dimension(
+                    self.input.get_shape()[1] * self.input.get_shape()[2] * self.input.get_shape()[3])
+                output_shape = tf.pack([-1, input_nodes])
+                self.input = tf.reshape(self.input, output_shape)
+
             # Matrix Multiplication Function
             input_nodes = self.input.get_shape()[1]
             output_shape = [input_nodes, output_nodes]
             w = self.weight_variable(name='weights', shape=output_shape)
             self.input = tf.matmul(self.input, w)
 
-            # Additional Functions
             if bn is True:  # batch normalization
                 self.input = self.batch_norm(self.input, 'fc')
             if b_value is not None:  # bias value
@@ -259,7 +263,7 @@ class Layers:
                 self.input = tf.add(self.input, b)
             if s_value is not None:  # scale value
                 s = self.const_variable(name='scale', shape=[output_nodes], value=s_value)
-                self.input = tf.multiply(self.input, s)
+                self.input = tf.mul(self.input, s)
             if activation_fn is not None:  # activation function
                 self.input = activation_fn(self.input)
             if keep_prob != 1:  # dropout function
@@ -324,25 +328,22 @@ class Layers:
             self.input = tf.nn.avg_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
-    def res_layer(self, output_channels, filter_size=3, stride=1, activation_fn=tf.nn.relu, bottle=False):
+    def res_layer(self, output_channels, filter_size=3, stride=1, activation_fn=tf.nn.relu):
         """
         Residual Layer: Input -> BN, Act_fn, Conv1, BN, Act_fn, Conv 2 -> Output.  Return: Input + Output
-        If stride > 1 or number of filters changes, decrease dims of Input by passing through a 1 x 1 Conv Layer
-        The bottle option changes the Residual layer blocks to the bottleneck structure
+        If stride > 1, decrease dims of Input by passing through a 1 x 1 Conv Layer
         :param output_channels: int
         :param filter_size: int. assumes square filter
         :param stride: int
         :param activation_fn: tf.nn function
-        :param bottle: boolean 
         """
         self.count['rn'] += 1
         scope = 'resnet_' + str(self.count['rn'])
         input_channels = self.input.get_shape()[3]
         with tf.variable_scope(scope):
 
-            # Determine Additive Output if dimensions change
-            # Decrease Input dimension with 1 x 1 Conv Layer with stride > 1
-            if (stride != 1) or (input_channels != output_channels):  
+            # Determine Additive Output Based on Stride in First Conv Layer.
+            if stride != 1:  # Decrease Input dimension with 1 x 1 Conv Layer with stride > 1
                 with tf.variable_scope('conv0'):
                     output_shape = [1, 1, input_channels, output_channels]
                     w = self.weight_variable(name='weights', shape=output_shape)
@@ -354,37 +355,23 @@ class Layers:
 
             # First Conv Layer. Implement stride in this layer if desired.
             with tf.variable_scope('conv1'):
-                fs = 1 if bottle else filter_size
-                oc = output_channels//4 if bottle else output_channels
-                output_shape = [fs, fs, input_channels, oc]
+                output_shape = [filter_size, filter_size, input_channels, output_channels]
                 w = self.weight_variable(name='weights', shape=output_shape)
                 self.input = self.batch_norm(self.input)
                 self.input = activation_fn(self.input)
                 self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding='SAME')
-                b = self.const_variable(name='bias', shape=[oc], value=0.0)
+                b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
                 self.input = tf.add(self.input, b)
             # Second Conv Layer
             with tf.variable_scope('conv2'):
                 input_channels = self.input.get_shape()[3]
-                oc = output_channels//4 if bottle else output_channels
-                output_shape = [filter_size, filter_size, input_channels, oc]
+                output_shape = [filter_size, filter_size, input_channels, output_channels]
                 w = self.weight_variable(name='weights', shape=output_shape)
                 self.input = self.batch_norm(self.input)
                 self.input = activation_fn(self.input)
                 self.input = tf.nn.conv2d(self.input, w, strides=[1, 1, 1, 1], padding='SAME')
-                b = self.const_variable(name='bias', shape=[oc], value=0.0)
+                b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
                 self.input = tf.add(self.input, b)
-            if bottle:
-                # Third Conv Layer
-                with tf.variable_scope('conv3'):
-                    input_channels = self.input.get_shape()[3]
-                    output_shape = [1, 1, input_channels, output_channels]
-                    w = self.weight_variable(name='weights', shape=output_shape)
-                    self.input = self.batch_norm(self.input)
-                    self.input = activation_fn(self.input)
-                    self.input = tf.nn.conv2d(self.input, w, strides=[1, 1, 1, 1], padding='SAME')
-                    b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
-                    self.input = tf.add(self.input, b)
 
             # Add input and output for final return
             self.input = self.input + additive_output
@@ -640,9 +627,10 @@ class Model:
         See list in __init__() function
     """
 
-    def __init__(self, flags, run_num, vram=0.25, restore=None):
+    def __init__(self, flags, run_num, vram=0.25, restore=None, restore_slim=None):
         print(flags)
         self.restore = restore
+        flags['restore_slim_file'] = restore_slim
 
         # Define constants
         self.global_step = 0
@@ -665,6 +653,7 @@ class Model:
         self._summaries()
         self.merged, self.saver, self.sess, self.writer = self._set_tf_functions(vram)
         self._initialize_model()
+        self._print_metrics()
 
     def __enter__(self):
         return self
@@ -701,7 +690,7 @@ class Model:
 
     def _summaries(self):
         for var in tf.trainable_variables():
-            tf.summary.histogram(var.name, var)
+            tf.histogram_summary(var.name, var)
             print(var.name)
 
     def _set_tf_functions(self, vram=0.25):
@@ -723,9 +712,17 @@ class Model:
         self.print_log('Batch_size: ' + self.check_str(self.flags['batch_size']))
         self.print_log('Model: ' + self.check_str(self.flags['model_directory']))
 
+    def _restore_slim(self):
+        variables_to_restore = slim.get_model_variables()
+        saver = tf_saver.Saver(variables_to_restore)
+        saver.restore(self.sess, self.flags['restore_slim_file'])
+
     def _initialize_model(self):
         self._setup_metrics()
         self.sess.run(tf.local_variables_initializer())
+        if self.flags['restore_slim_file'] is not None:
+            self.print_log('Restoring TF-Slim Model.')
+            self._restore_slim()
         if self.flags['restore'] is True:
             self._restore()
         else:
@@ -742,6 +739,9 @@ class Model:
         self.writer.add_summary(summary=summary, global_step=self.global_step)
         self.step += 1
         self.global_step += 1
+
+    def _print_metrics(self):
+        """ To print out print_log statements """
 
     @staticmethod
     def make_directory(folder_path):

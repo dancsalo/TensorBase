@@ -199,7 +199,7 @@ class Layers:
             input_channels = self.input.get_shape()[3]
             output_shape = [filter_size, filter_size, output_channels, input_channels]
             w = self.weight_variable(name='weights', shape=output_shape)
-            deconv_out_shape = tf.pack([batch_size, out_rows, out_cols, output_channels])
+            deconv_out_shape = tf.stack([batch_size, out_rows, out_cols, output_channels])
             self.input = tf.nn.conv2d_transpose(self.input, w, deconv_out_shape, [1, stride, stride, 1], padding)
 
             if bn is True:  # batch normalization
@@ -272,7 +272,7 @@ class Layers:
             # Reshape function
             input_nodes = tf.Dimension(
                 self.input.get_shape()[1] * self.input.get_shape()[2] * self.input.get_shape()[3])
-            output_shape = tf.pack([-1, input_nodes])
+            output_shape = tf.stack([-1, input_nodes])
             self.input = tf.reshape(self.input, output_shape)
 
             # Dropout function
@@ -298,7 +298,7 @@ class Layers:
             if len(self.input.get_shape()) == 4:
                 input_nodes = tf.Dimension(
                     self.input.get_shape()[1] * self.input.get_shape()[2] * self.input.get_shape()[3])
-                output_shape = tf.pack([-1, input_nodes])
+                output_shape = tf.stack([-1, input_nodes])
                 self.input = tf.reshape(self.input, output_shape)
 
             # Matrix Multiplication Function

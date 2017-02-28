@@ -794,7 +794,7 @@ class Model:
         if self.flags['restore'] is True:
             self._restore()
         else:
-            self.sess.run(tf.initialize_all_variables())
+            self.sess.run(tf.global_variables_initializer())
             self.print_log("Model training from scratch.")
 
     def _save_model(self, section):

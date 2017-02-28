@@ -3,17 +3,16 @@
 """
 Author: Dan Salo
 Initial Commit: 12/5/2016
-
 Purpose: Class for MNIST
 Adapted from https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/datasets/mnist.py
 """
 
-from base import Data
-import os
+from .base import Data
+from shutil import copyfile
 import numpy as np
+import os
 import gzip
 import urllib.request
-from shutil import copyfile
 
 
 class Mnist(Data):
@@ -46,9 +45,9 @@ class Mnist(Data):
         with open(local_file, 'rb') as f:
             test_labels = self.extract_labels(f, one_hot=one_hot)
 
-        if not 0 <= validation_size <= len(train_images):
+        if not 0 <= validation_size <= len(train_labels):
             raise ValueError(
-                'Validation size should be between 0 and {}. Received: {}.'.format(len(train_images), validation_size))
+                'Validation size should be between 0 and {}. Received: {}.'.format(len(train_labels), validation_size))
         return train_images, train_labels, test_images, test_labels
 
     def maybe_download(self, filename, work_directory, source_url):
@@ -116,7 +115,8 @@ class Mnist(Data):
                 return self.dense_to_one_hot(labels, num_classes)
             return labels
 
-    def dense_to_one_hot(self, labels_dense, num_classes):
+    @staticmethod
+    def dense_to_one_hot(labels_dense, num_classes):
         """Convert class labels from scalars to one-hot vectors."""
         num_labels = labels_dense.shape[0]
         index_offset = np.arange(num_labels) * num_classes

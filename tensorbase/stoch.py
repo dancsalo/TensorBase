@@ -97,7 +97,7 @@ class GaussianLayerConv(StochLayer):
         mu, std, h, w = self.params
         shape = tf.shape(mu)
         eps = tf.random_normal(shape)
-        z = tf.reshape(eps * std + mu, tf.pack([-1, h, w, self.num_latent]))
+        z = tf.reshape(eps * std + mu, tf.stack([-1, h, w, self.num_latent]))
         return z
 
     def log_likelihood(self, x, x_dims=(128, 128), standard=False):
@@ -105,7 +105,7 @@ class GaussianLayerConv(StochLayer):
         x must be 2D. [batch_size * eqsamples* iwsamples, num_latent]
         """
         mu, std, h, w = self.params
-        shape = tf.pack([32, x_dims[0], x_dims[1], self.num_latent, 1, 1])
+        shape = tf.stack([32, x_dims[0], x_dims[1], self.num_latent, 1, 1])
         x_reshape = tf.reshape(x, shape)
         c = - 0.5 * math.log(2 * math.pi)
         if standard is False:

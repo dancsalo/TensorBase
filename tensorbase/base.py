@@ -780,8 +780,13 @@ class Model:
         self.print_log('Batch_size: ' + self.check_str(self.flags['batch_size']))
         self.print_log('Model: ' + self.check_str(self.flags['model_directory']))
 
+    def name_in_checkpoint(self, var):
+        if var.op.name.startswith('model/'):
+            return var.op.name[len('model/'):]
+
     def _restore_slim(self):
         variables_to_restore = slim.get_model_variables()
+        variables_to_restore = {self.name_in_checkpoint(var): var for var in variables_to_restore}
         saver = tf_saver.Saver(variables_to_restore)
         saver.restore(self.sess, self.flags['restore_slim_file'])
 

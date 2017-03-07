@@ -767,7 +767,7 @@ class Model:
     def _set_tf_functions(self, vram=0.25):
         merged = tf.summary.merge_all()
         saver = tf.train.Saver()
-        config = tf.ConfigProto(log_device_placement=True)
+        config = tf.ConfigProto(log_device_placement=False)
         config.gpu_options.per_process_gpu_memory_fraction = vram
         sess = tf.InteractiveSession(config=config)
         writer = tf.summary.FileWriter(self.flags['logging_directory'], sess.graph)

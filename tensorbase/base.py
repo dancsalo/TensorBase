@@ -716,17 +716,10 @@ class Model:
         self._check_file_io(run_num)
         self._data()
         self._set_seed()
-        try:
-            print(flags['gpu'])
-            if flags['gpu'] == 1 or flags['gpu'] == 0:
-                with tf.device('/gpu:' + str(flags['gpu'])):
-                    self._network()
-            else:
-                print('GPU Not properly specified')
-                exit
-                self._network()
-        except KeyError:
-            self._network()
+        if flags['gpu'] == 1 or flags['gpu'] == 0:
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(flags['gpu'])
+            print('Using GPU %d' % flags['gpu'])
+        self._network()
         self._optimizer()
         self._summaries()
         self.merged, self.saver, self.sess, self.writer = self._set_tf_functions(vram)

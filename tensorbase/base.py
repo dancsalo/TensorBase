@@ -716,7 +716,17 @@ class Model:
         self._check_file_io(run_num)
         self._data()
         self._set_seed()
-        self._network()
+        try:
+            print(flags['gpu'])
+            if flags['gpu'] == 1 or flags['gpu'] == 0:
+                with tf.device('/gpu:' + flags['gpu']):
+                    self._network()
+            else:
+                print('GPU Not properly specified')
+                exit
+                self._network()
+        except KeyError:
+            self._network()
         self._optimizer()
         self._summaries()
         self.merged, self.saver, self.sess, self.writer = self._set_tf_functions(vram)
@@ -764,7 +774,7 @@ class Model:
     def _set_tf_functions(self, vram=0.25):
         merged = tf.summary.merge_all()
         saver = tf.train.Saver()
-        config = tf.ConfigProto(log_device_placement=False)
+        config = tf.ConfigProto(log_device_placement=True)
         config.gpu_options.per_process_gpu_memory_fraction = vram
         sess = tf.InteractiveSession(config=config)
         writer = tf.summary.FileWriter(self.flags['logging_directory'], sess.graph)

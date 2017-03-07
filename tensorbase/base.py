@@ -719,7 +719,7 @@ class Model:
         try:
             print(flags['gpu'])
             if flags['gpu'] == 1 or flags['gpu'] == 0:
-                with tf.device('/gpu:' + flags['gpu']):
+                with tf.device('/gpu:' + str(flags['gpu'])):
                     self._network()
             else:
                 print('GPU Not properly specified')

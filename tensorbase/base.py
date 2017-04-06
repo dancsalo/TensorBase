@@ -757,7 +757,6 @@ class Model:
     def _set_seed(self):
         tf.set_random_seed(self.flags['seed'])
         np.random.seed(self.flags['seed'])
-        self.print_log("Seed: %d" % self.flags['seed'])
 
     def _summaries(self):
         for var in tf.trainable_variables():
@@ -774,14 +773,10 @@ class Model:
         return merged, saver, sess, writer
 
     def _restore(self):
-        new_saver = tf.train.import_meta_graph(self.flags['restore_directory'] + self.flags['restore_file'])
-        new_saver.restore(self.sess, tf.train.latest_checkpoint('./' + self.flags['restore_directory']))
+        filename = self.flags['restore_directory'] + self.flags['restore_file']
+        new_saver = tf.train.import_meta_graph(filename)
+        new_saver.restore(self.sess, filename + '.meta')
         self.print_log("Model restored from %s" % self.flags['restore_file'])
-
-    def _setup_metrics(self):
-        self.print_log('Date: ' + str(datetime.datetime.now()).split('.')[0])
-        self.print_log('Batch_size: ' + self.check_str(self.flags['batch_size']))
-        self.print_log('Model: ' + self.check_str(self.flags['model_directory']))
 
     def name_in_checkpoint(self, var):
         if var.op.name.startswith('model/'):
@@ -794,7 +789,6 @@ class Model:
         saver.restore(self.sess, self.flags['restore_slim_file'])
 
     def _initialize_model(self):
-        self._setup_metrics()
         self.sess.run(tf.local_variables_initializer())
         if self.flags['restore_slim_file'] is not None:
             self.print_log('Restoring TF-Slim Model.')

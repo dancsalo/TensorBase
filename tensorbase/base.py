@@ -775,7 +775,7 @@ class Model:
     def _restore(self):
         filename = self.flags['restore_directory'] + self.flags['restore_file']
         new_saver = tf.train.import_meta_graph(filename)
-        new_saver.restore(self.sess, filename)
+        new_saver.restore(self.sess, filename[:-5])
         self.print_log("Model restored from %s" % self.flags['restore_file'])
 
     def name_in_checkpoint(self, var):

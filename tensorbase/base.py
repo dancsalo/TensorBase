@@ -759,7 +759,7 @@ class Model:
                 for v in uninit_vars:
                     var = v.decode("utf-8")
                     vars_list.append(var)
-                uninit_vars_tf = [v for v in tf.trainable_variables() if v.name.split(':')[0] in vars_list]
+                uninit_vars_tf = [v for v in tf.global_variables() if v.name.split(':')[0] in vars_list]
                 self.sess.run(tf.variables_initializer(var_list=uninit_vars_tf))
             else:
                 self.sess.run(tf.global_variables_initializer())

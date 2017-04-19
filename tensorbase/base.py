@@ -762,8 +762,8 @@ class Model:
                 uninit_vars_tf = [v for v in tf.trainable_variables() if v.name.split(':')[0] in vars_list]
                 self.sess.run(tf.variables_initializer(var_list=uninit_vars_tf))
             else:
-            self.sess.run(tf.global_variables_initializer())
-            self.print_log("Model training from scratch.")
+                self.sess.run(tf.global_variables_initializer())
+                self.print_log("Model training from scratch.")
 
     def _save_model(self, section):
         self.print_log("Optimization Finished!")

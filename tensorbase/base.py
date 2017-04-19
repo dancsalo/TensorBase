@@ -34,7 +34,7 @@ class Layers:
         self.input = x  # initialize input tensor
         self.count = {'conv': 0, 'deconv': 0, 'fc': 0, 'flat': 0, 'mp': 0, 'up': 0, 'ap': 0, 'rn': 0}
 
-    def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', bn=True, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0):
+    def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', bn=True, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, trainable=True):
         """
         2D Convolutional Layer.
         :param filter_size: int. assumes square filter
@@ -55,22 +55,22 @@ class Layers:
                 filter_size = self.input.get_shape()[2]
                 padding = 'VALID'
             output_shape = [filter_size, filter_size, input_channels, output_channels]
-            w = self.weight_variable(name='weights', shape=output_shape)
+            w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
             self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding=padding)
 
             if bn is True:  # batch normalization
                 self.input = self.batch_norm(self.input)
             if b_value is not None:  # bias value
-                b = self.const_variable(name='bias', shape=[output_channels], value=b_value)
+                b = self.const_variable(name='bias', shape=[output_channels], value=b_value, trainable=trainable)
                 self.input = tf.add(self.input, b)
             if s_value is not None:  # scale value
-                s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
+                s = self.const_variable(name='scale', shape=[output_channels], value=s_value, trainable=trainable)
                 self.input = tf.multiply(self.input, s)
             if activation_fn is not None:  # activation function
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
         
-    def convnet(self, filter_size, output_channels, stride=None, padding=None, activation_fn=None, b_value=None, s_value=None, bn=None):
+    def convnet(self, filter_size, output_channels, stride=None, padding=None, activation_fn=None, b_value=None, s_value=None, bn=None, trainable=True):
         '''
         Shortcut for creating a 2D Convolutional Neural Network in one line
         
@@ -119,56 +119,9 @@ class Layers:
                         activation_fn=activation_fn[l],
                         b_value=b_value[l], 
                         s_value=s_value[l], 
-                        bn=bn[l])
+                        bn=bn[l], trainable=trainable)
 
-    def convnet(self, filter_sizes, output_channels, strides=None, padding=None, activation_fn=None, b_value=None,
-                s_value=None, bn=None):
-        '''
-        Shortcut for creating a 2D Convolutional Neural Network in one line
-
-        Stacks multiple conv2d layers, with arguments for each layer defined in a list.
-        If an argument is left as None, then the conv2d defaults are kept
-        :param filter_sizes: int. assumes square filter
-        :param output_channels: int
-        :param strides: int
-        :param padding: 'VALID' or 'SAME'
-        :param activation_fn: tf.nn function
-        :param b_value: float
-        :param s_value: float
-        '''
-        # Number of layers to stack
-        depth = len(filter_sizes)
-
-        # Default arguments where None was passed in
-        if strides is None:
-            strides = np.ones(depth)
-        if padding is None:
-            padding = ['SAME'] * depth
-        if activation_fn is None:
-            activation_fn = [tf.nn.relu] * depth
-        if b_value is None:
-            b_value = np.zeros(depth)
-        if s_value is None:
-            s_value = np.ones(depth)
-        if bn is None:
-            bn = [True] * depth
-
-            # Make sure that number of layers is consistent
-        assert len(output_channels) == depth
-        assert len(strides) == depth
-        assert len(padding) == depth
-        assert len(activation_fn) == depth
-        assert len(b_value) == depth
-        assert len(s_value) == depth
-        assert len(bn) == depth
-
-        # Stack convolutional layers
-        for l in range(depth):
-            self.conv2d(filter_size=filter_sizes[l], output_channels=output_channels[l], stride=strides[l],
-                        padding=padding[l], activation_fn=activation_fn[l], b_value=b_value[l], s_value=s_value[l],
-                        bn=bn[l])
-
-    def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
+    def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True, trainable=True):
         """
         2D Deconvolutional Layer
         :param filter_size: int. assumes square filter
@@ -198,24 +151,24 @@ class Layers:
             # Deconv function
             input_channels = self.input.get_shape()[3]
             output_shape = [filter_size, filter_size, output_channels, input_channels]
-            w = self.weight_variable(name='weights', shape=output_shape)
+            w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
             deconv_out_shape = tf.stack([batch_size, out_rows, out_cols, output_channels])
             self.input = tf.nn.conv2d_transpose(self.input, w, deconv_out_shape, [1, stride, stride, 1], padding)
 
             if bn is True:  # batch normalization
                 self.input = self.batch_norm(self.input)
             if b_value is not None:  # bias value
-                b = self.const_variable(name='bias', shape=[output_channels], value=b_value)
+                b = self.const_variable(name='bias', shape=[output_channels], value=b_value, trainable=trainable)
                 self.input = tf.add(self.input, b)
             if s_value is not None:  # scale value
-                s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
+                s = self.const_variable(name='scale', shape=[output_channels], value=s_value, trainable=trainable)
                 self.input = tf.multiply(self.input, s)
             if activation_fn is not None:  # non-linear activation function
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))  # print shape of output
 
     def deconvnet(self, filter_sizes, output_channels, strides=None, padding=None, activation_fn=None, b_value=None,
-                s_value=None, bn=None):
+                s_value=None, bn=None, trainable=True):
         '''
         Shortcut for creating a 2D Deconvolutional Neural Network in one line
 
@@ -259,7 +212,7 @@ class Layers:
         for l in range(depth):
             self.deconv2d(filter_size=filter_sizes[l], output_channels=output_channels[l], stride=strides[l],
                         padding=padding[l], activation_fn=activation_fn[l], b_value=b_value[l], s_value=s_value[l],
-                        bn=bn[l])
+                        bn=bn[l], trainable=trainable)
 
     def flatten(self, keep_prob=1):
         """
@@ -280,7 +233,7 @@ class Layers:
                 self.input = tf.nn.dropout(self.input, keep_prob=keep_prob)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
-    def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True):
+    def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True, trainable=True):
         """
         Fully Connected Layer
         :param output_nodes: int
@@ -304,16 +257,16 @@ class Layers:
             # Matrix Multiplication Function
             input_nodes = self.input.get_shape()[1]
             output_shape = [input_nodes, output_nodes]
-            w = self.weight_variable(name='weights', shape=output_shape)
+            w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
             self.input = tf.matmul(self.input, w)
 
             if bn is True:  # batch normalization
                 self.input = self.batch_norm(self.input, 'fc')
             if b_value is not None:  # bias value
-                b = self.const_variable(name='bias', shape=[output_nodes], value=b_value)
+                b = self.const_variable(name='bias', shape=[output_nodes], value=b_value, trainable=trainable)
                 self.input = tf.add(self.input, b)
             if s_value is not None:  # scale value
-                s = self.const_variable(name='scale', shape=[output_nodes], value=s_value)
+                s = self.const_variable(name='scale', shape=[output_nodes], value=s_value, trainable=trainable)
                 self.input = tf.multiply(self.input, s)
             if activation_fn is not None:  # activation function
                 self.input = activation_fn(self.input)
@@ -379,7 +332,7 @@ class Layers:
             self.input = tf.nn.avg_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
-    def res_layer(self, output_channels, filter_size=3, stride=1, activation_fn=tf.nn.relu, bottle=False):
+    def res_layer(self, output_channels, filter_size=3, stride=1, activation_fn=tf.nn.relu, bottle=False, trainable=True):
         """
         Residual Layer: Input -> BN, Act_fn, Conv1, BN, Act_fn, Conv 2 -> Output.  Return: Input + Output
         If stride > 1 or number of filters changes, decrease dims of Input by passing through a 1 x 1 Conv Layer
@@ -400,7 +353,7 @@ class Layers:
             if (stride != 1) or (input_channels != output_channels):  
                 with tf.variable_scope('conv0'):
                     output_shape = [1, 1, input_channels, output_channels]
-                    w = self.weight_variable(name='weights', shape=output_shape)
+                    w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
                     additive_output = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding='SAME')
                     b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
                     additive_output = tf.add(additive_output, b)
@@ -412,7 +365,7 @@ class Layers:
                 fs = 1 if bottle else filter_size
                 oc = output_channels//4 if bottle else output_channels
                 output_shape = [fs, fs, input_channels, oc]
-                w = self.weight_variable(name='weights', shape=output_shape)
+                w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
                 self.input = self.batch_norm(self.input)
                 self.input = activation_fn(self.input)
                 self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding='SAME')
@@ -423,7 +376,7 @@ class Layers:
                 input_channels = self.input.get_shape()[3]
                 oc = output_channels//4 if bottle else output_channels
                 output_shape = [filter_size, filter_size, input_channels, oc]
-                w = self.weight_variable(name='weights', shape=output_shape)
+                w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
                 self.input = self.batch_norm(self.input)
                 self.input = activation_fn(self.input)
                 self.input = tf.nn.conv2d(self.input, w, strides=[1, 1, 1, 1], padding='SAME')
@@ -434,7 +387,7 @@ class Layers:
                 with tf.variable_scope('conv3'):
                     input_channels = self.input.get_shape()[3]
                     output_shape = [1, 1, input_channels, output_channels]
-                    w = self.weight_variable(name='weights', shape=output_shape)
+                    w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
                     self.input = self.batch_norm(self.input)
                     self.input = activation_fn(self.input)
                     self.input = tf.nn.conv2d(self.input, w, strides=[1, 1, 1, 1], padding='SAME')
@@ -445,15 +398,15 @@ class Layers:
             self.input = self.input + additive_output
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
 
-    def noisy_and(self, num_classes):
+    def noisy_and(self, num_classes, trainable=True):
         """ Multiple Instance Learning (MIL), flexible pooling function
         :param num_classes: int, determine number of output maps
         """
         assert self.input.get_shape()[3] == num_classes  # input tensor should have map depth equal to # of classes
         scope = 'noisyAND'
         with tf.variable_scope(scope):
-            a = self.const_variable(name='a', shape=[1], value=1.0)
-            b = self.const_variable(name='b', shape=[1, num_classes], value=0.0)
+            a = self.const_variable(name='a', shape=[1], value=1.0, trainable=trainable)
+            b = self.const_variable(name='b', shape=[1, num_classes], value=0.0, trainable=trainable)
             mean = tf.reduce_mean(self.input, axis=[1, 2])
             self.input = (tf.nn.sigmoid(a * (mean - b)) - tf.nn.sigmoid(-a * b)) / (
             tf.sigmoid(a * (1 - b)) - tf.sigmoid(-a * b))
@@ -493,27 +446,28 @@ class Layers:
         logging.info(message)
 
     @staticmethod
-    def weight_variable(name, shape):
+    def weight_variable(name, shape, trainable):
         """
         :param name: string
         :param shape: 4D array
         :return: tf variable
         """
-        w = tf.get_variable(name=name, shape=shape, initializer=init.variance_scaling_initializer())
+        w = tf.get_variable(name=name, shape=shape, initializer=init.variance_scaling_initializer(), trainable=trainable)
         weights_norm = tf.reduce_sum(tf.nn.l2_loss(w),
                                      name=name + '_norm')  # Should user want to optimize weight decay
         tf.add_to_collection('weight_losses', weights_norm)
         return w
 
     @staticmethod
-    def const_variable(name, shape, value):
+    def const_variable(name, shape, value, trainable):
         """
         :param name: string
         :param shape: 1D array
         :param value: float
         :return: tf variable
         """
-        return tf.get_variable(name, shape, initializer=tf.constant_initializer(value))
+        return tf.get_variable(name, shape, initializer=tf.constant_initializer(value), trainable=trainable)
+
 
 class Data:
     """

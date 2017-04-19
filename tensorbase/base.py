@@ -746,10 +746,22 @@ class Model:
         self.sess.run(tf.local_variables_initializer())
         if self.flags['restore'] is True:
             self._restore()
-        elif self.flags['restore_slim_file'] is not None:
-            self.print_log('Restoring TF-Slim Model.')
-            self._restore_slim()
         else:
+            if self.flags['restore_slim_file'] is not None:
+                self.print_log('Restoring TF-Slim Model.')
+
+                # Restore Slim Model
+                self._restore_slim()
+
+                # Initialize all other trainable variables, i.e. those which are uninitialized
+                uninit_vars = self.sess.run(tf.report_uninitialized_variables())
+                vars_list = list()
+                for v in uninit_vars:
+                    var = v.decode("utf-8")
+                    vars_list.append(var)
+                uninit_vars_tf = [v for v in tf.trainable_variables() if v.name.split(':')[0] in vars_list]
+                self.sess.run(tf.variables_initializer(var_list=uninit_vars_tf))
+            else:
             self.sess.run(tf.global_variables_initializer())
             self.print_log("Model training from scratch.")
 

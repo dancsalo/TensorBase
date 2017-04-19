@@ -744,11 +744,11 @@ class Model:
 
     def _initialize_model(self):
         self.sess.run(tf.local_variables_initializer())
-        if self.flags['restore_slim_file'] is not None:
-            self.print_log('Restoring TF-Slim Model.')
-            self._restore_slim()
         if self.flags['restore'] is True:
             self._restore()
+        elif self.flags['restore_slim_file'] is not None:
+            self.print_log('Restoring TF-Slim Model.')
+            self._restore_slim()
         else:
             self.sess.run(tf.global_variables_initializer())
             self.print_log("Model training from scratch.")

@@ -2,9 +2,8 @@
 
 """
 @author: Dan Salo, Nov 2016
-Purpose: To facilitate network creation, data I/O, and model training in TensorFlow
+Purpose: To facilitate data I/O, and model training in TensorFlow
 Classes:
-    Layers
     Data
     Model
 """
@@ -12,461 +11,10 @@ Classes:
 import tensorflow as tf
 import numpy as np
 import logging
-import tensorflow.contrib.layers as init
 import math
 import os
-import datetime
-import tensorflow.contrib.slim as slim
+
 from tensorflow.python.training import saver as tf_saver
-
-
-class Layers:
-    """
-    A Class to facilitate network creation in TensorFlow.
-    Methods: conv2d, deconv2d, cflatten, maxpool, avgpool, res_layer, noisy_and, batch_norm
-    """
-    def __init__(self, x):
-        """
-        Initialize model Layers.
-        .input = numpy array
-        .count = dictionary to keep count of number of certain types of layers for naming purposes
-        """
-        self.input = x  # initialize input tensor
-        self.count = {'conv': 0, 'deconv': 0, 'fc': 0, 'flat': 0, 'mp': 0, 'up': 0, 'ap': 0, 'rn': 0}
-
-    def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', bn=True, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, trainable=True):
-        """
-        2D Convolutional Layer.
-        :param filter_size: int. assumes square filter
-        :param output_channels: int
-        :param stride: int
-        :param padding: 'VALID' or 'SAME'
-        :param activation_fn: tf.nn function
-        :param b_value: float
-        :param s_value: float
-        """
-        self.count['conv'] += 1
-        scope = 'conv_' + str(self.count['conv'])
-        with tf.variable_scope(scope):
-
-            # Conv function
-            input_channels = self.input.get_shape()[3]
-            if filter_size == 0:  # outputs a 1x1 feature map; used for FCN
-                filter_size = self.input.get_shape()[2]
-                padding = 'VALID'
-            output_shape = [filter_size, filter_size, input_channels, output_channels]
-            w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
-            self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding=padding)
-
-            if bn is True:  # batch normalization
-                self.input = self.batch_norm(self.input)
-            if b_value is not None:  # bias value
-                b = self.const_variable(name='bias', shape=[output_channels], value=b_value, trainable=trainable)
-                self.input = tf.add(self.input, b)
-            if s_value is not None:  # scale value
-                s = self.const_variable(name='scale', shape=[output_channels], value=s_value, trainable=trainable)
-                self.input = tf.multiply(self.input, s)
-            if activation_fn is not None:  # activation function
-                self.input = activation_fn(self.input)
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-        
-    def convnet(self, filter_size, output_channels, stride=None, padding=None, activation_fn=None, b_value=None, s_value=None, bn=None, trainable=True):
-        '''
-        Shortcut for creating a 2D Convolutional Neural Network in one line
-        
-        Stacks multiple conv2d layers, with arguments for each layer defined in a list.        
-        If an argument is left as None, then the conv2d defaults are kept
-        :param filter_sizes: int. assumes square filter
-        :param output_channels: int
-        :param stride: int
-        :param padding: 'VALID' or 'SAME'
-        :param activation_fn: tf.nn function
-        :param b_value: float
-        :param s_value: float
-        '''        
-        # Number of layers to stack
-        depth = len(filter_size)
-        
-        # Default arguments where None was passed in
-        if stride is None:
-            stride = np.ones(depth)
-        if padding is None:
-            padding = ['SAME'] * depth
-        if activation_fn is None:
-            activation_fn = [tf.nn.relu] * depth
-        if b_value is None: 
-            b_value = np.zeros(depth)
-        if s_value is None:
-            s_value = np.ones(depth)
-        if bn is None:
-            bn = [True] * depth 
-            
-        # Make sure that number of layers is consistent
-        assert len(output_channels) == depth
-        assert len(stride) == depth
-        assert len(padding) == depth
-        assert len(activation_fn) == depth
-        assert len(b_value) == depth
-        assert len(s_value) == depth
-        assert len(bn) == depth
-        
-        # Stack convolutional layers
-        for l in range(depth):
-            self.conv2d(filter_size=filter_size[l],
-                        output_channels=output_channels[l],
-                        stride=stride[l],
-                        padding=padding[l],
-                        activation_fn=activation_fn[l],
-                        b_value=b_value[l], 
-                        s_value=s_value[l], 
-                        bn=bn[l], trainable=trainable)
-
-    def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True, trainable=True):
-        """
-        2D Deconvolutional Layer
-        :param filter_size: int. assumes square filter
-        :param output_channels: int
-        :param stride: int
-        :param padding: 'VALID' or 'SAME'
-        :param activation_fn: tf.nn function
-        :param b_value: float
-        :param s_value: float
-        """
-        self.count['deconv'] += 1
-        scope = 'deconv_' + str(self.count['deconv'])
-        with tf.variable_scope(scope):
-
-            # Calculate the dimensions for deconv function
-            batch_size = tf.shape(self.input)[0]
-            input_height = tf.shape(self.input)[1]
-            input_width = tf.shape(self.input)[2]
-
-            if padding == "VALID":
-                out_rows = (input_height - 1) * stride + filter_size
-                out_cols = (input_width - 1) * stride + filter_size
-            else:  # padding == "SAME":
-                out_rows = input_height * stride
-                out_cols = input_width * stride
-
-            # Deconv function
-            input_channels = self.input.get_shape()[3]
-            output_shape = [filter_size, filter_size, output_channels, input_channels]
-            w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
-            deconv_out_shape = tf.stack([batch_size, out_rows, out_cols, output_channels])
-            self.input = tf.nn.conv2d_transpose(self.input, w, deconv_out_shape, [1, stride, stride, 1], padding)
-
-            if bn is True:  # batch normalization
-                self.input = self.batch_norm(self.input)
-            if b_value is not None:  # bias value
-                b = self.const_variable(name='bias', shape=[output_channels], value=b_value, trainable=trainable)
-                self.input = tf.add(self.input, b)
-            if s_value is not None:  # scale value
-                s = self.const_variable(name='scale', shape=[output_channels], value=s_value, trainable=trainable)
-                self.input = tf.multiply(self.input, s)
-            if activation_fn is not None:  # non-linear activation function
-                self.input = activation_fn(self.input)
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))  # print shape of output
-
-    def deconvnet(self, filter_sizes, output_channels, strides=None, padding=None, activation_fn=None, b_value=None,
-                s_value=None, bn=None, trainable=True):
-        '''
-        Shortcut for creating a 2D Deconvolutional Neural Network in one line
-
-        Stacks multiple deconv2d layers, with arguments for each layer defined in a list.
-        If an argument is left as None, then the conv2d defaults are kept
-        :param filter_sizes: int. assumes square filter
-        :param output_channels: int
-        :param stride: int
-        :param padding: 'VALID' or 'SAME'
-        :param activation_fn: tf.nn function
-        :param b_value: float
-        :param s_value: float
-        '''
-        # Number of layers to stack
-        depth = len(filter_sizes)
-
-        # Default arguments where None was passed in
-        if strides is None:
-            strides = np.ones(depth)
-        if padding is None:
-            padding = ['SAME'] * depth
-        if activation_fn is None:
-            activation_fn = [tf.nn.relu] * depth
-        if b_value is None:
-            b_value = np.zeros(depth)
-        if s_value is None:
-            s_value = np.ones(depth)
-        if bn is None:
-            bn = [True] * depth
-
-            # Make sure that number of layers is consistent
-        assert len(output_channels) == depth
-        assert len(strides) == depth
-        assert len(padding) == depth
-        assert len(activation_fn) == depth
-        assert len(b_value) == depth
-        assert len(s_value) == depth
-        assert len(bn) == depth
-
-        # Stack convolutional layers
-        for l in range(depth):
-            self.deconv2d(filter_size=filter_sizes[l], output_channels=output_channels[l], stride=strides[l],
-                        padding=padding[l], activation_fn=activation_fn[l], b_value=b_value[l], s_value=s_value[l],
-                        bn=bn[l], trainable=trainable)
-
-    def flatten(self, keep_prob=1):
-        """
-        Flattens 4D Tensor (from Conv Layer) into 2D Tensor (to FC Layer)
-        :param keep_prob: int. set to 1 for no dropout
-        """
-        self.count['flat'] += 1
-        scope = 'flat_' + str(self.count['flat'])
-        with tf.variable_scope(scope):
-            # Reshape function
-            input_nodes = tf.Dimension(
-                self.input.get_shape()[1] * self.input.get_shape()[2] * self.input.get_shape()[3])
-            output_shape = tf.stack([-1, input_nodes])
-            self.input = tf.reshape(self.input, output_shape)
-
-            # Dropout function
-            if keep_prob != 1:
-                self.input = tf.nn.dropout(self.input, keep_prob=keep_prob)
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-
-    def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True, trainable=True):
-        """
-        Fully Connected Layer
-        :param output_nodes: int
-        :param keep_prob: int. set to 1 for no dropout
-        :param activation_fn: tf.nn function
-        :param b_value: float or None
-        :param s_value: float or None
-        :param bn: bool
-        """
-        self.count['fc'] += 1
-        scope = 'fc_' + str(self.count['fc'])
-        with tf.variable_scope(scope):
-
-            # Flatten if necessary
-            if len(self.input.get_shape()) == 4:
-                input_nodes = tf.Dimension(
-                    self.input.get_shape()[1] * self.input.get_shape()[2] * self.input.get_shape()[3])
-                output_shape = tf.stack([-1, input_nodes])
-                self.input = tf.reshape(self.input, output_shape)
-
-            # Matrix Multiplication Function
-            input_nodes = self.input.get_shape()[1]
-            output_shape = [input_nodes, output_nodes]
-            w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
-            self.input = tf.matmul(self.input, w)
-
-            if bn is True:  # batch normalization
-                self.input = self.batch_norm(self.input, 'fc')
-            if b_value is not None:  # bias value
-                b = self.const_variable(name='bias', shape=[output_nodes], value=b_value, trainable=trainable)
-                self.input = tf.add(self.input, b)
-            if s_value is not None:  # scale value
-                s = self.const_variable(name='scale', shape=[output_nodes], value=s_value, trainable=trainable)
-                self.input = tf.multiply(self.input, s)
-            if activation_fn is not None:  # activation function
-                self.input = activation_fn(self.input)
-            if keep_prob != 1:  # dropout function
-                self.input = tf.nn.dropout(self.input, keep_prob=keep_prob)
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-
-    def maxpool(self, k=2, s=None, globe=False):
-        """
-        Takes max value over a k x k area in each input map, or over the entire map (global = True)
-        :param k: int
-        :param globe:  int, whether to pool over each feature map in its entirety
-        """
-        self.count['mp'] += 1
-        scope = 'maxpool_' + str(self.count['mp'])
-        with tf.variable_scope(scope):
-            if globe is True:  # Global Pool Parameters
-                k1 = self.input.get_shape()[1]
-                k2 = self.input.get_shape()[2]
-                s1 = 1
-                s2 = 1
-                padding = 'VALID'
-            else:
-                k1 = k
-                k2 = k
-                if s is None:
-                    s1 = k
-                    s2 = k
-                else:
-                    s1 = s
-                    s2 = s
-                padding = 'SAME'
-            # Max Pool Function
-            self.input = tf.nn.max_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-
-    def avgpool(self, k=2, s=None, globe=False):
-        """
-        Averages the values over a k x k area in each input map, or over the entire map (global = True)
-        :param k: int
-        :param globe: int, whether to pool over each feature map in its entirety
-        """
-        self.count['ap'] += 1
-        scope = 'avgpool_' + str(self.count['mp'])
-        with tf.variable_scope(scope):
-            if globe is True:  # Global Pool Parameters
-                k1 = self.input.get_shape()[1]
-                k2 = self.input.get_shape()[2]
-                s1 = 1
-                s2 = 1
-                padding = 'VALID'
-            else:
-                k1 = k
-                k2 = k
-                if s is None:
-                    s1 = k
-                    s2 = k
-                else:
-                    s1 = s
-                    s2 = s
-                padding = 'SAME'
-            # Average Pool Function
-            self.input = tf.nn.avg_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-
-    def res_layer(self, output_channels, filter_size=3, stride=1, activation_fn=tf.nn.relu, bottle=False, trainable=True):
-        """
-        Residual Layer: Input -> BN, Act_fn, Conv1, BN, Act_fn, Conv 2 -> Output.  Return: Input + Output
-        If stride > 1 or number of filters changes, decrease dims of Input by passing through a 1 x 1 Conv Layer
-        The bottle option changes the Residual layer blocks to the bottleneck structure
-        :param output_channels: int
-        :param filter_size: int. assumes square filter
-        :param stride: int
-        :param activation_fn: tf.nn function
-        :param bottle: boolean 
-        """
-        self.count['rn'] += 1
-        scope = 'resnet_' + str(self.count['rn'])
-        input_channels = self.input.get_shape()[3]
-        with tf.variable_scope(scope):
-
-            # Determine Additive Output if dimensions change
-            # Decrease Input dimension with 1 x 1 Conv Layer with stride > 1
-            if (stride != 1) or (input_channels != output_channels):  
-                with tf.variable_scope('conv0'):
-                    output_shape = [1, 1, input_channels, output_channels]
-                    w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
-                    additive_output = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding='SAME')
-                    b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
-                    additive_output = tf.add(additive_output, b)
-            else:
-                additive_output = self.input
-
-            # First Conv Layer. Implement stride in this layer if desired.
-            with tf.variable_scope('conv1'):
-                fs = 1 if bottle else filter_size
-                oc = output_channels//4 if bottle else output_channels
-                output_shape = [fs, fs, input_channels, oc]
-                w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
-                self.input = self.batch_norm(self.input)
-                self.input = activation_fn(self.input)
-                self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding='SAME')
-                b = self.const_variable(name='bias', shape=[oc], value=0.0)
-                self.input = tf.add(self.input, b)
-            # Second Conv Layer
-            with tf.variable_scope('conv2'):
-                input_channels = self.input.get_shape()[3]
-                oc = output_channels//4 if bottle else output_channels
-                output_shape = [filter_size, filter_size, input_channels, oc]
-                w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
-                self.input = self.batch_norm(self.input)
-                self.input = activation_fn(self.input)
-                self.input = tf.nn.conv2d(self.input, w, strides=[1, 1, 1, 1], padding='SAME')
-                b = self.const_variable(name='bias', shape=[oc], value=0.0)
-                self.input = tf.add(self.input, b)
-            if bottle:
-                # Third Conv Layer
-                with tf.variable_scope('conv3'):
-                    input_channels = self.input.get_shape()[3]
-                    output_shape = [1, 1, input_channels, output_channels]
-                    w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
-                    self.input = self.batch_norm(self.input)
-                    self.input = activation_fn(self.input)
-                    self.input = tf.nn.conv2d(self.input, w, strides=[1, 1, 1, 1], padding='SAME')
-                    b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
-                    self.input = tf.add(self.input, b)
-
-            # Add input and output for final return
-            self.input = self.input + additive_output
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-
-    def noisy_and(self, num_classes, trainable=True):
-        """ Multiple Instance Learning (MIL), flexible pooling function
-        :param num_classes: int, determine number of output maps
-        """
-        assert self.input.get_shape()[3] == num_classes  # input tensor should have map depth equal to # of classes
-        scope = 'noisyAND'
-        with tf.variable_scope(scope):
-            a = self.const_variable(name='a', shape=[1], value=1.0, trainable=trainable)
-            b = self.const_variable(name='b', shape=[1, num_classes], value=0.0, trainable=trainable)
-            mean = tf.reduce_mean(self.input, axis=[1, 2])
-            self.input = (tf.nn.sigmoid(a * (mean - b)) - tf.nn.sigmoid(-a * b)) / (
-            tf.sigmoid(a * (1 - b)) - tf.sigmoid(-a * b))
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
-
-    def get_output(self):
-        """
-        :return tf.Tensor, output of network
-        """
-        return self.input
-
-    def batch_norm(self, x, type='conv', epsilon=1e-3):
-        """
-        Batch Normalization: Apply mean subtraction and variance scaling
-        :param x: input feature map stack
-        :param type: string, either 'conv' or 'fc'
-        :param epsilon: float
-        :return: output feature map stack
-        """
-        # Determine indices over which to calculate moments, based on layer type
-        if type == 'conv':
-            size = [0, 1, 2]
-        else:  # type == 'fc'
-            size = [0]
-
-        # Calculate batch mean and variance
-        batch_mean1, batch_var1 = tf.nn.moments(x, size, keep_dims=True)
-
-        # Apply the initial batch normalizing transform
-        z1_hat = (x - batch_mean1) / tf.sqrt(batch_var1 + epsilon)
-        return z1_hat
-
-    @staticmethod
-    def print_log(message):
-        """ Writes a message to terminal screen and logging file, if applicable"""
-        print(message)
-        logging.info(message)
-
-    @staticmethod
-    def weight_variable(name, shape, trainable):
-        """
-        :param name: string
-        :param shape: 4D array
-        :return: tf variable
-        """
-        w = tf.get_variable(name=name, shape=shape, initializer=init.variance_scaling_initializer(), trainable=trainable)
-        weights_norm = tf.reduce_sum(tf.nn.l2_loss(w),
-                                     name=name + '_norm')  # Should user want to optimize weight decay
-        tf.add_to_collection('weight_losses', weights_norm)
-        return w
-
-    @staticmethod
-    def const_variable(name, shape, value, trainable):
-        """
-        :param name: string
-        :param shape: 1D array
-        :param value: float
-        :return: tf variable
-        """
-        return tf.get_variable(name, shape, initializer=tf.constant_initializer(value), trainable=trainable)
 
 
 class Data:
@@ -649,42 +197,149 @@ class Model:
         See list in __init__() function
     """
 
-    def __init__(self, flags, run_num, vram=0.25, restore=None, restore_slim=None):
-        print(flags)
-        self.restore = restore
-        flags['restore_slim_file'] = restore_slim
+    def __init__(self, flags, config_dict=None):
+        config_yaml_flags_dict = self.load_config_yaml(flags, config_dict)
+        config_yaml_flags_dict_none = self.check_dict_keys(config_yaml_flags_dict)
 
         # Define constants
-        self.global_step = 0
-        self.step = 0
-        self.num_test_images = 0
-        self.num_valid_images = 0
-        self.num_train_images = 0
-        self.run_num = run_num
-
-        # Define other elements
-        self.results = list()
-        self.flags = flags
+        self.step = 1
+        self.flags = config_yaml_flags_dict_none
 
         # Run initialization functions
-        self._check_file_io(run_num)
+        self._check_file_io()
         self._data()
         self._set_seed()
-        if flags['gpu'] == 1 or flags['gpu'] == 0:
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(flags['gpu'])
-            print('Using GPU %d' % flags['gpu'])
         self._network()
         self._optimizer()
         self._summaries()
-        self.merged, self.saver, self.sess, self.writer = self._set_tf_functions(vram)
+        self.merged, self.saver, self.sess, self.writer = self._set_tf_functions()
         self._initialize_model()
-        self._print_metrics()
 
-    def __enter__(self):
-        return self
+    def load_config_yaml(self, flags, config_dict):
+        """ Load config dict and yaml dict and then override both with flags dict. """
+        if config_dict is None:
+            print('Config File not specified. Using only input flags.')
+            return {}
+        try:
+            config_yaml_dict = self.cfg_from_file(flags['YAML_FILE'], config_dict)
+        except KeyError:
+            print('Yaml File not specified. Using only input flags and config file.')
+            return config_dict
+        print('Using input flags, config file, and yaml file.')
+        config_yaml_flags_dict = self._merge_a_into_b_simple(flags, config_yaml_dict)
+        return config_yaml_flags_dict
 
-    def __exit__(self, *err):
-        self.close()
+    def check_dict_keys(self, config_yaml_flags_dict):
+        """ Fill in all optional keys with None. Exit in a crucial key is not defined. """
+        crucial_keys = ['MODEL_DIRECTORY', 'SAVE_DIRECTORY']
+        for key in crucial_keys:
+            if key not in config_yaml_flags_dict:
+                self.print_log('You must define %s. Now exiting...' % key)
+                exit()
+        optional_keys = ['RESTORE_SLIM_FILE', 'RESTORE_META', 'RESTORE_SLIM', 'SEED', 'GPU']
+        for key in optional_keys:
+            if key not in config_yaml_flags_dict:
+                config_yaml_flags_dict[key] = None
+                self.print_log('%s in flags, yaml or config dictionary was not found.' % key)
+        if 'RUN_NUM' not in config_yaml_flags_dict:
+            config_yaml_flags_dict['RUN_NUM'] = 0
+        if 'NUM_EPOCHS' not in config_yaml_flags_dict:
+            config_yaml_flags_dict['NUM_EPOCHS'] = 1
+        return config_yaml_flags_dict
+
+    def _check_file_io(self):
+        """ Create and define logging directory """
+        folder = 'Model' + str(self.flags['RUN_NUM']) + '/'
+        folder_restore = 'Model' + str(self.flags['RESTORE_META']) + '/'
+        self.flags['RESTORE_DIRECTORY'] = self.flags['SAVE_DIRECTORY'] + self.flags[
+            'MODEL_DIRECTORY'] + folder_restore
+        self.flags['LOGGING_DIRECTORY'] = self.flags['SAVE_DIRECTORY'] + self.flags[
+            'MODEL_DIRECTORY'] + folder
+        self.make_directory(self.flags['LOGGING_DIRECTORY'])
+        logging.basicConfig(filename=self.flags['LOGGING_DIRECTORY'] + 'ModelInformation.log', level=logging.INFO)
+
+    def _set_tf_functions(self):
+        """ Sets up summary writer, saver, and session, with configurable gpu visibility """
+        merged = tf.summary.merge_all()
+        saver = tf.train.Saver()
+        if type(self.flags['GPU']) is int:
+            gpu_options = tf.GPUOptions(allow_growth=True, visible_device_list=self.check_str(self.flags['GPU']))
+        elif type(self.flags['GPU']) is list:
+            gpu_options = tf.GPUOptions(allow_growth=True,
+                                        visible_device_list=[self.check_str(g) for g in self.flags['GPU']])
+        else:
+            gpu_options = tf.GPUOptions(allow_growth=True)
+        config = tf.ConfigProto(log_device_placement=False, gpu_options=gpu_options)
+        sess = tf.Session(config=config)
+        writer = tf.summary.FileWriter(self.flags['LOGGING_DIRECTORY'], sess.graph)
+        return merged, saver, sess, writer
+
+    def _get_restore_meta_file(self):
+        return 'part_' + str(self.flags['FILE_EPOCH']) + '.ckpt.meta'
+
+    def _restore_meta(self):
+        """ Restore from meta file. 'RESTORE_META_FILE' is expected to have .meta at the end. """
+        filename = self.flags['RESTORE_DIRECTORY'] + self._get_restore_meta_file()
+        new_saver = tf.train.import_meta_graph(filename)
+        new_saver.restore(self.sess, filename[:-5])
+        self.print_log("Model restored from %s" % self.flags['RESTORE_META_FILE'])
+
+    def _restore_slim(self):
+        """ Restore from tf-slim file (usually a ImageNet pre-trained model). """
+        import tensorflow.contrib.slim as slim
+        variables_to_restore = slim.get_model_variables()
+        variables_to_restore = {self.name_in_checkpoint(var): var for var in variables_to_restore}
+        saver = tf_saver.Saver(variables_to_restore)
+        saver.restore(self.sess, self.flags['RESTORE_SLIM_FILE'])
+        self.print_log("Model restored from %s" % self.flags['RESTORE_SLIM_FILE'])
+
+    def _initialize_model(self):
+        """ Initialize the defined network and restore from files is so specified. """
+        self.sess.run(tf.local_variables_initializer())
+        if self.flags['RESTORE_META'] == 1:
+            self.print_log('Restoring from .meta file')
+            self._restore_meta()
+            self._init_uninit_vars()
+        elif self.flags['RESTORE_SLIM'] == 1:
+            self.print_log('Restoring TF-Slim Model.')
+            self._restore_slim()
+            self._init_uninit_vars()
+        else:
+            self.print_log("Model training from scratch.")
+            self.sess.run(tf.global_variables_initializer())
+
+    def _init_uninit_vars(self):
+        """ Initialize all other trainable variables, i.e. those which are uninitialized """
+        uninit_vars = self.sess.run(tf.report_uninitialized_variables())
+        vars_list = list()
+        for v in uninit_vars:
+            var = v.decode("utf-8")
+            vars_list.append(var)
+        uninit_vars_tf = [v for v in tf.global_variables() if v.name.split(':')[0] in vars_list]
+        self.sess.run(tf.variables_initializer(var_list=uninit_vars_tf))
+
+    def _save_model(self, section):
+        """ Save model in the logging directory """
+        checkpoint_name = self.flags['LOGGING_DIRECTORY'] + 'part_%d' % section + '.ckpt'
+        save_path = self.saver.save(self.sess, checkpoint_name)
+        self.print_log("Model saved in file: %s" % save_path)
+
+    def _record_training_step(self, summary):
+        """ Adds summary to writer and increments the step. """
+        self.writer.add_summary(summary=summary, global_step=self.step)
+        self.step += 1
+
+    def _set_seed(self):
+        """ Set random seed for numpy and tensorflow packages """
+        if self.flags['SEED'] is not None:
+            tf.set_random_seed(self.flags['SEED'])
+            np.random.seed(self.flags['SEED'])
+
+    def _summaries(self):
+        """ Print out summaries for every variable. Can be overriden in main function. """
+        for var in tf.trainable_variables():
+            tf.summary.histogram(var.name, var)
+            print(var.name)
 
     def _data(self):
         """Define data"""
@@ -698,86 +353,8 @@ class Model:
         """Define optimizer"""
         raise NotImplementedError
 
-    def _check_file_io(self, run_num):
-        folder = 'Model' + str(run_num) + '/'
-        folder_restore = 'Model' + str(self.restore) + '/'
-        self.flags['restore_directory'] = self.flags['save_directory'] + self.flags[
-            'model_directory'] + folder_restore
-        self.flags['logging_directory'] = self.flags['save_directory'] + self.flags[
-            'model_directory'] + folder
-        self.make_directory(self.flags['logging_directory'])
-        logging.basicConfig(filename=self.flags['logging_directory'] + 'ModelInformation.log', level=logging.INFO)
-
-    def _set_seed(self):
-        tf.set_random_seed(self.flags['seed'])
-        np.random.seed(self.flags['seed'])
-
-    def _summaries(self):
-        for var in tf.trainable_variables():
-            tf.histogram_summary(var.name, var)
-            print(var.name)
-
-    def _set_tf_functions(self, vram=0.25):
-        merged = tf.summary.merge_all()
-        saver = tf.train.Saver()
-        config = tf.ConfigProto(log_device_placement=False)
-        config.gpu_options.per_process_gpu_memory_fraction = vram
-        sess = tf.InteractiveSession(config=config)
-        writer = tf.summary.FileWriter(self.flags['logging_directory'], sess.graph)
-        return merged, saver, sess, writer
-
-    def _restore(self):
-        filename = self.flags['restore_directory'] + self.flags['restore_file']
-        new_saver = tf.train.import_meta_graph(filename)
-        new_saver.restore(self.sess, filename[:-5])
-        self.print_log("Model restored from %s" % self.flags['restore_file'])
-
-    def name_in_checkpoint(self, var):
-        if var.op.name.startswith('model/'):
-            return var.op.name[len('model/'):]
-
-    def _restore_slim(self):
-        variables_to_restore = slim.get_model_variables()
-        variables_to_restore = {self.name_in_checkpoint(var): var for var in variables_to_restore}
-        saver = tf_saver.Saver(variables_to_restore)
-        saver.restore(self.sess, self.flags['restore_slim_file'])
-
-    def _initialize_model(self):
-        self.sess.run(tf.local_variables_initializer())
-        if self.flags['restore'] is True:
-            self._restore()
-        else:
-            if self.flags['restore_slim_file'] is not None:
-                self.print_log('Restoring TF-Slim Model.')
-
-                # Restore Slim Model
-                self._restore_slim()
-
-                # Initialize all other trainable variables, i.e. those which are uninitialized
-                uninit_vars = self.sess.run(tf.report_uninitialized_variables())
-                vars_list = list()
-                for v in uninit_vars:
-                    var = v.decode("utf-8")
-                    vars_list.append(var)
-                uninit_vars_tf = [v for v in tf.global_variables() if v.name.split(':')[0] in vars_list]
-                self.sess.run(tf.variables_initializer(var_list=uninit_vars_tf))
-            else:
-                self.sess.run(tf.global_variables_initializer())
-                self.print_log("Model training from scratch.")
-
-    def _save_model(self, section):
-        self.print_log("Optimization Finished!")
-        checkpoint_name = self.flags['logging_directory'] + 'part_%d' % section + '.ckpt'
-        save_path = self.saver.save(self.sess, checkpoint_name)
-        self.print_log("Model saved in file: %s" % save_path)
-
-    def _record_training_step(self, summary):
-        self.writer.add_summary(summary=summary, global_step=self.global_step)
-        self.step += 1
-        self.global_step += 1
-
-    def _print_metrics(self):
-        """ To print out print_log statements """
+    def get_flags(self):
+        return self.flags
 
     @staticmethod
     def make_directory(folder_path):
@@ -800,3 +377,516 @@ class Model:
             return str(int(obj))
         else:
             return str(obj)
+
+    @staticmethod
+    def name_in_checkpoint(var):
+        """ Removes 'model' scoping if it is present in order to properly restore weights. """
+        if var.op.name.startswith('model/'):
+            return var.op.name[len('model/'):]
+
+    def _merge_a_into_b(self, a, b):
+        """Merge config dictionary a into config dictionary b, clobbering the
+        options in b whenever they are also specified in a.
+        """
+        from easydict import EasyDict as edict
+        if type(a) is not edict:
+            return
+
+        for k, v in a.items():
+            # a must specify keys that are in b
+            if k not in b:
+                raise KeyError('{} is not a valid config key'.format(k))
+
+            # the types must match, too
+            old_type = type(b[k])
+            if old_type is not type(v):
+                if isinstance(b[k], np.ndarray):
+                    v = np.array(v, dtype=b[k].dtype)
+                else:
+                    raise ValueError(('Type mismatch ({} vs. {}) '
+                                      'for config key: {}').format(type(b[k]),
+                                                                   type(v), k))
+
+            # recursively merge dicts
+            if type(v) is edict:
+                try:
+                    self._merge_a_into_b(a[k], b[k])
+                except:
+                    print('Error under config key: {}'.format(k))
+                    raise
+            else:
+                b[k] = v
+        return b
+
+    def _merge_a_into_b_simple(self, a, b):
+        """Merge config dictionary a into config dictionary b, clobbering the
+        options in b whenever they are also specified in a. Do not do any checking.
+        """
+        for k, v in a.items():
+            b[k] = v
+        return b
+
+    def cfg_from_file(self, yaml_filename, config_dict):
+        """Load a config file and merge it into the default options."""
+        import yaml
+        from easydict import EasyDict as edict
+        with open(yaml_filename, 'r') as f:
+            yaml_cfg = edict(yaml.load(f))
+
+        return self._merge_a_into_b(yaml_cfg, config_dict)
+
+
+class Layers:
+    """
+    A Class to facilitate network creation in TensorFlow.
+    Methods: conv2d, deconv2d, cflatten, maxpool, avgpool, res_layer, noisy_and, batch_norm
+    """
+
+    def __init__(self, x):
+        """
+        Initialize model Layers.
+        .input = numpy array
+        .count = dictionary to keep count of number of certain types of layers for naming purposes
+        """
+        self.input = x  # initialize input tensor
+        self.count = {'conv': 0, 'deconv': 0, 'fc': 0, 'flat': 0, 'mp': 0, 'up': 0, 'ap': 0, 'rn': 0}
+
+    def conv2d(self, filter_size, output_channels, stride=1, padding='SAME', bn=True, activation_fn=tf.nn.relu,
+               b_value=0.0, s_value=1.0, trainable=True):
+        """
+        2D Convolutional Layer.
+        :param filter_size: int. assumes square filter
+        :param output_channels: int
+        :param stride: int
+        :param padding: 'VALID' or 'SAME'
+        :param activation_fn: tf.nn function
+        :param b_value: float
+        :param s_value: float
+        """
+        self.count['conv'] += 1
+        scope = 'conv_' + str(self.count['conv'])
+        with tf.variable_scope(scope):
+
+            # Conv function
+            input_channels = self.input.get_shape()[3]
+            if filter_size == 0:  # outputs a 1x1 feature map; used for FCN
+                filter_size = self.input.get_shape()[2]
+                padding = 'VALID'
+            output_shape = [filter_size, filter_size, input_channels, output_channels]
+            w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
+            self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding=padding)
+
+            if bn is True:  # batch normalization
+                self.input = self.batch_norm(self.input)
+            if b_value is not None:  # bias value
+                b = self.const_variable(name='bias', shape=[output_channels], value=b_value, trainable=trainable)
+                self.input = tf.add(self.input, b)
+            if s_value is not None:  # scale value
+                s = self.const_variable(name='scale', shape=[output_channels], value=s_value, trainable=trainable)
+                self.input = tf.multiply(self.input, s)
+            if activation_fn is not None:  # activation function
+                self.input = activation_fn(self.input)
+        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+
+    def convnet(self, filter_size, output_channels, stride=None, padding=None, activation_fn=None, b_value=None,
+                s_value=None, bn=None, trainable=True):
+        '''
+        Shortcut for creating a 2D Convolutional Neural Network in one line
+
+        Stacks multiple conv2d layers, with arguments for each layer defined in a list.
+        If an argument is left as None, then the conv2d defaults are kept
+        :param filter_sizes: int. assumes square filter
+        :param output_channels: int
+        :param stride: int
+        :param padding: 'VALID' or 'SAME'
+        :param activation_fn: tf.nn function
+        :param b_value: float
+        :param s_value: float
+        '''
+        # Number of layers to stack
+        depth = len(filter_size)
+
+        # Default arguments where None was passed in
+        if stride is None:
+            stride = np.ones(depth)
+        if padding is None:
+            padding = ['SAME'] * depth
+        if activation_fn is None:
+            activation_fn = [tf.nn.relu] * depth
+        if b_value is None:
+            b_value = np.zeros(depth)
+        if s_value is None:
+            s_value = np.ones(depth)
+        if bn is None:
+            bn = [True] * depth
+
+            # Make sure that number of layers is consistent
+        assert len(output_channels) == depth
+        assert len(stride) == depth
+        assert len(padding) == depth
+        assert len(activation_fn) == depth
+        assert len(b_value) == depth
+        assert len(s_value) == depth
+        assert len(bn) == depth
+
+        # Stack convolutional layers
+        for l in range(depth):
+            self.conv2d(filter_size=filter_size[l],
+                        output_channels=output_channels[l],
+                        stride=stride[l],
+                        padding=padding[l],
+                        activation_fn=activation_fn[l],
+                        b_value=b_value[l],
+                        s_value=s_value[l],
+                        bn=bn[l], trainable=trainable)
+
+    def deconv2d(self, filter_size, output_channels, stride=1, padding='SAME', activation_fn=tf.nn.relu, b_value=0.0,
+                 s_value=1.0, bn=True, trainable=True):
+        """
+        2D Deconvolutional Layer
+        :param filter_size: int. assumes square filter
+        :param output_channels: int
+        :param stride: int
+        :param padding: 'VALID' or 'SAME'
+        :param activation_fn: tf.nn function
+        :param b_value: float
+        :param s_value: float
+        """
+        self.count['deconv'] += 1
+        scope = 'deconv_' + str(self.count['deconv'])
+        with tf.variable_scope(scope):
+
+            # Calculate the dimensions for deconv function
+            batch_size = tf.shape(self.input)[0]
+            input_height = tf.shape(self.input)[1]
+            input_width = tf.shape(self.input)[2]
+
+            if padding == "VALID":
+                out_rows = (input_height - 1) * stride + filter_size
+                out_cols = (input_width - 1) * stride + filter_size
+            else:  # padding == "SAME":
+                out_rows = input_height * stride
+                out_cols = input_width * stride
+
+            # Deconv function
+            input_channels = self.input.get_shape()[3]
+            output_shape = [filter_size, filter_size, output_channels, input_channels]
+            w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
+            deconv_out_shape = tf.stack([batch_size, out_rows, out_cols, output_channels])
+            self.input = tf.nn.conv2d_transpose(self.input, w, deconv_out_shape, [1, stride, stride, 1], padding)
+
+            if bn is True:  # batch normalization
+                self.input = self.batch_norm(self.input)
+            if b_value is not None:  # bias value
+                b = self.const_variable(name='bias', shape=[output_channels], value=b_value, trainable=trainable)
+                self.input = tf.add(self.input, b)
+            if s_value is not None:  # scale value
+                s = self.const_variable(name='scale', shape=[output_channels], value=s_value, trainable=trainable)
+                self.input = tf.multiply(self.input, s)
+            if activation_fn is not None:  # non-linear activation function
+                self.input = activation_fn(self.input)
+        self.print_log(scope + ' output: ' + str(self.input.get_shape()))  # print shape of output
+
+    def deconvnet(self, filter_sizes, output_channels, strides=None, padding=None, activation_fn=None, b_value=None,
+                  s_value=None, bn=None, trainable=True):
+        '''
+        Shortcut for creating a 2D Deconvolutional Neural Network in one line
+
+        Stacks multiple deconv2d layers, with arguments for each layer defined in a list.
+        If an argument is left as None, then the conv2d defaults are kept
+        :param filter_sizes: int. assumes square filter
+        :param output_channels: int
+        :param stride: int
+        :param padding: 'VALID' or 'SAME'
+        :param activation_fn: tf.nn function
+        :param b_value: float
+        :param s_value: float
+        '''
+        # Number of layers to stack
+        depth = len(filter_sizes)
+
+        # Default arguments where None was passed in
+        if strides is None:
+            strides = np.ones(depth)
+        if padding is None:
+            padding = ['SAME'] * depth
+        if activation_fn is None:
+            activation_fn = [tf.nn.relu] * depth
+        if b_value is None:
+            b_value = np.zeros(depth)
+        if s_value is None:
+            s_value = np.ones(depth)
+        if bn is None:
+            bn = [True] * depth
+
+            # Make sure that number of layers is consistent
+        assert len(output_channels) == depth
+        assert len(strides) == depth
+        assert len(padding) == depth
+        assert len(activation_fn) == depth
+        assert len(b_value) == depth
+        assert len(s_value) == depth
+        assert len(bn) == depth
+
+        # Stack convolutional layers
+        for l in range(depth):
+            self.deconv2d(filter_size=filter_sizes[l], output_channels=output_channels[l], stride=strides[l],
+                          padding=padding[l], activation_fn=activation_fn[l], b_value=b_value[l], s_value=s_value[l],
+                          bn=bn[l], trainable=trainable)
+
+    def flatten(self, keep_prob=1):
+        """
+        Flattens 4D Tensor (from Conv Layer) into 2D Tensor (to FC Layer)
+        :param keep_prob: int. set to 1 for no dropout
+        """
+        self.count['flat'] += 1
+        scope = 'flat_' + str(self.count['flat'])
+        with tf.variable_scope(scope):
+            # Reshape function
+            input_nodes = tf.Dimension(
+                self.input.get_shape()[1] * self.input.get_shape()[2] * self.input.get_shape()[3])
+            output_shape = tf.stack([-1, input_nodes])
+            self.input = tf.reshape(self.input, output_shape)
+
+            # Dropout function
+            if keep_prob != 1:
+                self.input = tf.nn.dropout(self.input, keep_prob=keep_prob)
+        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+
+    def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True,
+           trainable=True):
+        """
+        Fully Connected Layer
+        :param output_nodes: int
+        :param keep_prob: int. set to 1 for no dropout
+        :param activation_fn: tf.nn function
+        :param b_value: float or None
+        :param s_value: float or None
+        :param bn: bool
+        """
+        self.count['fc'] += 1
+        scope = 'fc_' + str(self.count['fc'])
+        with tf.variable_scope(scope):
+
+            # Flatten if necessary
+            if len(self.input.get_shape()) == 4:
+                input_nodes = tf.Dimension(
+                    self.input.get_shape()[1] * self.input.get_shape()[2] * self.input.get_shape()[3])
+                output_shape = tf.stack([-1, input_nodes])
+                self.input = tf.reshape(self.input, output_shape)
+
+            # Matrix Multiplication Function
+            input_nodes = self.input.get_shape()[1]
+            output_shape = [input_nodes, output_nodes]
+            w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
+            self.input = tf.matmul(self.input, w)
+
+            if bn is True:  # batch normalization
+                self.input = self.batch_norm(self.input, 'fc')
+            if b_value is not None:  # bias value
+                b = self.const_variable(name='bias', shape=[output_nodes], value=b_value, trainable=trainable)
+                self.input = tf.add(self.input, b)
+            if s_value is not None:  # scale value
+                s = self.const_variable(name='scale', shape=[output_nodes], value=s_value, trainable=trainable)
+                self.input = tf.multiply(self.input, s)
+            if activation_fn is not None:  # activation function
+                self.input = activation_fn(self.input)
+            if keep_prob != 1:  # dropout function
+                self.input = tf.nn.dropout(self.input, keep_prob=keep_prob)
+        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+
+    def maxpool(self, k=2, s=None, globe=False):
+        """
+        Takes max value over a k x k area in each input map, or over the entire map (global = True)
+        :param k: int
+        :param globe:  int, whether to pool over each feature map in its entirety
+        """
+        self.count['mp'] += 1
+        scope = 'maxpool_' + str(self.count['mp'])
+        with tf.variable_scope(scope):
+            if globe is True:  # Global Pool Parameters
+                k1 = self.input.get_shape()[1]
+                k2 = self.input.get_shape()[2]
+                s1 = 1
+                s2 = 1
+                padding = 'VALID'
+            else:
+                k1 = k
+                k2 = k
+                if s is None:
+                    s1 = k
+                    s2 = k
+                else:
+                    s1 = s
+                    s2 = s
+                padding = 'SAME'
+            # Max Pool Function
+            self.input = tf.nn.max_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
+        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+
+    def avgpool(self, k=2, s=None, globe=False):
+        """
+        Averages the values over a k x k area in each input map, or over the entire map (global = True)
+        :param k: int
+        :param globe: int, whether to pool over each feature map in its entirety
+        """
+        self.count['ap'] += 1
+        scope = 'avgpool_' + str(self.count['mp'])
+        with tf.variable_scope(scope):
+            if globe is True:  # Global Pool Parameters
+                k1 = self.input.get_shape()[1]
+                k2 = self.input.get_shape()[2]
+                s1 = 1
+                s2 = 1
+                padding = 'VALID'
+            else:
+                k1 = k
+                k2 = k
+                if s is None:
+                    s1 = k
+                    s2 = k
+                else:
+                    s1 = s
+                    s2 = s
+                padding = 'SAME'
+            # Average Pool Function
+            self.input = tf.nn.avg_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
+        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+
+    def res_layer(self, output_channels, filter_size=3, stride=1, activation_fn=tf.nn.relu, bottle=False,
+                  trainable=True):
+        """
+        Residual Layer: Input -> BN, Act_fn, Conv1, BN, Act_fn, Conv 2 -> Output.  Return: Input + Output
+        If stride > 1 or number of filters changes, decrease dims of Input by passing through a 1 x 1 Conv Layer
+        The bottle option changes the Residual layer blocks to the bottleneck structure
+        :param output_channels: int
+        :param filter_size: int. assumes square filter
+        :param stride: int
+        :param activation_fn: tf.nn function
+        :param bottle: boolean
+        """
+        self.count['rn'] += 1
+        scope = 'resnet_' + str(self.count['rn'])
+        input_channels = self.input.get_shape()[3]
+        with tf.variable_scope(scope):
+
+            # Determine Additive Output if dimensions change
+            # Decrease Input dimension with 1 x 1 Conv Layer with stride > 1
+            if (stride != 1) or (input_channels != output_channels):
+                with tf.variable_scope('conv0'):
+                    output_shape = [1, 1, input_channels, output_channels]
+                    w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
+                    additive_output = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding='SAME')
+                    b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
+                    additive_output = tf.add(additive_output, b)
+            else:
+                additive_output = self.input
+
+            # First Conv Layer. Implement stride in this layer if desired.
+            with tf.variable_scope('conv1'):
+                fs = 1 if bottle else filter_size
+                oc = output_channels // 4 if bottle else output_channels
+                output_shape = [fs, fs, input_channels, oc]
+                w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
+                self.input = self.batch_norm(self.input)
+                self.input = activation_fn(self.input)
+                self.input = tf.nn.conv2d(self.input, w, strides=[1, stride, stride, 1], padding='SAME')
+                b = self.const_variable(name='bias', shape=[oc], value=0.0)
+                self.input = tf.add(self.input, b)
+            # Second Conv Layer
+            with tf.variable_scope('conv2'):
+                input_channels = self.input.get_shape()[3]
+                oc = output_channels // 4 if bottle else output_channels
+                output_shape = [filter_size, filter_size, input_channels, oc]
+                w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
+                self.input = self.batch_norm(self.input)
+                self.input = activation_fn(self.input)
+                self.input = tf.nn.conv2d(self.input, w, strides=[1, 1, 1, 1], padding='SAME')
+                b = self.const_variable(name='bias', shape=[oc], value=0.0)
+                self.input = tf.add(self.input, b)
+            if bottle:
+                # Third Conv Layer
+                with tf.variable_scope('conv3'):
+                    input_channels = self.input.get_shape()[3]
+                    output_shape = [1, 1, input_channels, output_channels]
+                    w = self.weight_variable(name='weights', shape=output_shape, trainable=trainable)
+                    self.input = self.batch_norm(self.input)
+                    self.input = activation_fn(self.input)
+                    self.input = tf.nn.conv2d(self.input, w, strides=[1, 1, 1, 1], padding='SAME')
+                    b = self.const_variable(name='bias', shape=[output_channels], value=0.0)
+                    self.input = tf.add(self.input, b)
+
+            # Add input and output for final return
+            self.input = self.input + additive_output
+        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+
+    def noisy_and(self, num_classes, trainable=True):
+        """ Multiple Instance Learning (MIL), flexible pooling function
+        :param num_classes: int, determine number of output maps
+        """
+        assert self.input.get_shape()[3] == num_classes  # input tensor should have map depth equal to # of classes
+        scope = 'noisyAND'
+        with tf.variable_scope(scope):
+            a = self.const_variable(name='a', shape=[1], value=1.0, trainable=trainable)
+            b = self.const_variable(name='b', shape=[1, num_classes], value=0.0, trainable=trainable)
+            mean = tf.reduce_mean(self.input, axis=[1, 2])
+            self.input = (tf.nn.sigmoid(a * (mean - b)) - tf.nn.sigmoid(-a * b)) / (
+                tf.sigmoid(a * (1 - b)) - tf.sigmoid(-a * b))
+        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+
+    def get_output(self):
+        """
+        :return tf.Tensor, output of network
+        """
+        return self.input
+
+    def batch_norm(self, x, type='conv', epsilon=1e-3):
+        """
+        Batch Normalization: Apply mean subtraction and variance scaling
+        :param x: input feature map stack
+        :param type: string, either 'conv' or 'fc'
+        :param epsilon: float
+        :return: output feature map stack
+        """
+        # Determine indices over which to calculate moments, based on layer type
+        if type == 'conv':
+            size = [0, 1, 2]
+        else:  # type == 'fc'
+            size = [0]
+
+        # Calculate batch mean and variance
+        batch_mean1, batch_var1 = tf.nn.moments(x, size, keep_dims=True)
+
+        # Apply the initial batch normalizing transform
+        z1_hat = (x - batch_mean1) / tf.sqrt(batch_var1 + epsilon)
+        return z1_hat
+
+    @staticmethod
+    def print_log(message):
+        """ Writes a message to terminal screen and logging file, if applicable"""
+        print(message)
+        logging.info(message)
+
+    @staticmethod
+    def weight_variable(name, shape, trainable):
+        """
+        :param name: string
+        :param shape: 4D array
+        :return: tf variable
+        """
+        w = tf.get_variable(name=name, shape=shape, initializer=init.variance_scaling_initializer(),
+                            trainable=trainable)
+        weights_norm = tf.reduce_sum(tf.nn.l2_loss(w),
+                                     name=name + '_norm')  # Should user want to optimize weight decay
+        tf.add_to_collection('weight_losses', weights_norm)
+        return w
+
+    @staticmethod
+    def const_variable(name, shape, value, trainable):
+        """
+        :param name: string
+        :param shape: 1D array
+        :param value: float
+        :return: tf variable
+        """
+        return tf.get_variable(name, shape, initializer=tf.constant_initializer(value), trainable=trainable)

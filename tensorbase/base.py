@@ -14,7 +14,7 @@ import logging
 import math
 import os
 
-from tensorflow.python.training import saver as tf_saver
+from tensorflow.python import pywrap_tensorflow
 
 
 class Data:
@@ -200,6 +200,7 @@ class Model:
     def __init__(self, flags, config_dict=None):
         config_yaml_flags_dict = self.load_config_yaml(flags, config_dict)
         config_yaml_flags_dict_none = self.check_dict_keys(config_yaml_flags_dict)
+        self.print_log(config_yaml_flags_dict_none)
 
         # Define constants
         self.step = 1
@@ -284,29 +285,32 @@ class Model:
         new_saver.restore(self.sess, filename[:-5])
         self.print_log("Model restored from %s" % self.flags['RESTORE_META_FILE'])
 
-    def _restore_slim(self):
+    def _restore_slim(self, variables):
         """ Restore from tf-slim file (usually a ImageNet pre-trained model). """
-        import tensorflow.contrib.slim as slim
-        variables_to_restore = slim.get_model_variables()
-        variables_to_restore = {self.name_in_checkpoint(var): var for var in variables_to_restore}
-        saver = tf_saver.Saver(variables_to_restore)
+        variables_to_restore = self.get_variables_in_checkpoint_file(self.flags['RESTORE_SLIM_FILE'])
+        variables_to_restore = {self.name_in_checkpoint(v): v for v in variables if (self.name_in_checkpoint(v) in variables_to_restore)}
+        if variables_to_restore is []:
+            self.print_log('Check the SLIM checkpoint filename. No model variables matched the checkpoint variables.')
+            exit()
+        saver = tf.train.Saver(variables_to_restore)
         saver.restore(self.sess, self.flags['RESTORE_SLIM_FILE'])
         self.print_log("Model restored from %s" % self.flags['RESTORE_SLIM_FILE'])
 
     def _initialize_model(self):
         """ Initialize the defined network and restore from files is so specified. """
+        # Initialize all variables first
         self.sess.run(tf.local_variables_initializer())
         if self.flags['RESTORE_META'] == 1:
             self.print_log('Restoring from .meta file')
+            self.sess.run(tf.global_variables_initializer())
             self._restore_meta()
-            self._init_uninit_vars()
         elif self.flags['RESTORE_SLIM'] == 1:
             self.print_log('Restoring TF-Slim Model.')
-            self._restore_slim()
-            self._init_uninit_vars()
+            all_model_variables = tf.global_variables()
+            self.sess.run(tf.global_variables_initializer())
+            self._restore_slim(all_model_variables)
         else:
             self.print_log("Model training from scratch.")
-            self.sess.run(tf.global_variables_initializer())
 
     def _init_uninit_vars(self):
         """ Initialize all other trainable variables, i.e. those which are uninitialized """
@@ -383,6 +387,18 @@ class Model:
         """ Removes 'model' scoping if it is present in order to properly restore weights. """
         if var.op.name.startswith('model/'):
             return var.op.name[len('model/'):]
+
+    @staticmethod
+    def get_variables_in_checkpoint_file(filename):
+        try:
+            reader = pywrap_tensorflow.NewCheckpointReader(filename)
+            var_to_shape_map = reader.get_variable_to_shape_map()
+            return var_to_shape_map
+        except Exception as e:  # pylint: disable=broad-except
+            print(str(e))
+            if "corrupted compressed block contents" in str(e):
+                print("It's likely that your checkpoint file has been compressed "
+                      "with SNAPPY.")
 
     def _merge_a_into_b(self, a, b):
         """Merge config dictionary a into config dictionary b, clobbering the

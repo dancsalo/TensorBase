@@ -77,11 +77,11 @@ class GaussianLayerConv(StochLayer):
             # Infer mu and std with fully connected layer
             with tf.variable_scope('mu'):
                 model_mu = Layers(self.x)
-                model_mu.conv2d(3, self.num_latent)
+                model_mu.conv2d(3, self.num_latent, activation_fn=None)
                 mu = model_mu.get_output()
             with tf.variable_scope('std'):
                 model_var = Layers(self.x)
-                model_var.conv2d(3, self.num_latent)
+                model_var.conv2d(3, self.num_latent, activation_fn=None)
                 std = tf.nn.softplus(model_var.get_output())
 
         # Height and width

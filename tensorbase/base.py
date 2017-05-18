@@ -251,7 +251,7 @@ class Model:
     def _check_file_io(self):
         """ Create and define logging directory """
         folder = 'Model' + str(self.flags['RUN_NUM']) + '/'
-        folder_restore = 'Model' + str(self.flags['RESTORE_META']) + '/'
+        folder_restore = 'Model' + str(self.flags['MODEL_RESTORE']) + '/'
         self.flags['RESTORE_DIRECTORY'] = self.flags['SAVE_DIRECTORY'] + self.flags[
             'MODEL_DIRECTORY'] + folder_restore
         self.flags['LOGGING_DIRECTORY'] = self.flags['SAVE_DIRECTORY'] + self.flags[
@@ -265,9 +265,6 @@ class Model:
         saver = tf.train.Saver()
         if type(self.flags['GPU']) is int:
             gpu_options = tf.GPUOptions(allow_growth=True, visible_device_list=self.check_str(self.flags['GPU']))
-        elif type(self.flags['GPU']) is list:
-            gpu_options = tf.GPUOptions(allow_growth=True,
-                                        visible_device_list=[self.check_str(g) for g in self.flags['GPU']])
         else:
             gpu_options = tf.GPUOptions(allow_growth=True)
         config = tf.ConfigProto(log_device_placement=False, gpu_options=gpu_options)
@@ -280,10 +277,11 @@ class Model:
 
     def _restore_meta(self):
         """ Restore from meta file. 'RESTORE_META_FILE' is expected to have .meta at the end. """
+        restore_meta_file = self._get_restore_meta_file()
         filename = self.flags['RESTORE_DIRECTORY'] + self._get_restore_meta_file()
         new_saver = tf.train.import_meta_graph(filename)
         new_saver.restore(self.sess, filename[:-5])
-        self.print_log("Model restored from %s" % self.flags['RESTORE_META_FILE'])
+        self.print_log("Model restored from %s" % restore_meta_file)
 
     def _restore_slim(self, variables):
         """ Restore from tf-slim file (usually a ImageNet pre-trained model). """
@@ -508,7 +506,6 @@ class Layers:
                 s_value=None, bn=None, trainable=True):
         '''
         Shortcut for creating a 2D Convolutional Neural Network in one line
-
         Stacks multiple conv2d layers, with arguments for each layer defined in a list.
         If an argument is left as None, then the conv2d defaults are kept
         :param filter_sizes: int. assumes square filter
@@ -607,7 +604,6 @@ class Layers:
                   s_value=None, bn=None, trainable=True):
         '''
         Shortcut for creating a 2D Deconvolutional Neural Network in one line
-
         Stacks multiple deconv2d layers, with arguments for each layer defined in a list.
         If an argument is left as None, then the conv2d defaults are kept
         :param filter_sizes: int. assumes square filter

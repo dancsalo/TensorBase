@@ -15,7 +15,7 @@ import math
 import os
 
 from tensorflow.python import pywrap_tensorflow
-
+import sys
 
 class Data:
     """
@@ -200,7 +200,6 @@ class Model:
     def __init__(self, flags, config_dict=None):
         config_yaml_flags_dict = self.load_config_yaml(flags, config_dict)
         config_yaml_flags_dict_none = self.check_dict_keys(config_yaml_flags_dict)
-        self.print_log(config_yaml_flags_dict_none)
 
         # Define constants
         self.step = 1
@@ -220,7 +219,7 @@ class Model:
         """ Load config dict and yaml dict and then override both with flags dict. """
         if config_dict is None:
             print('Config File not specified. Using only input flags.')
-            return {}
+            return flags
         try:
             config_yaml_dict = self.cfg_from_file(flags['YAML_FILE'], config_dict)
         except KeyError:
@@ -235,13 +234,13 @@ class Model:
         crucial_keys = ['MODEL_DIRECTORY', 'SAVE_DIRECTORY']
         for key in crucial_keys:
             if key not in config_yaml_flags_dict:
-                self.print_log('You must define %s. Now exiting...' % key)
+                print('You must define %s. Now exiting...' % key)
                 exit()
         optional_keys = ['RESTORE_SLIM_FILE', 'RESTORE_META', 'RESTORE_SLIM', 'SEED', 'GPU']
         for key in optional_keys:
             if key not in config_yaml_flags_dict:
                 config_yaml_flags_dict[key] = None
-                self.print_log('%s in flags, yaml or config dictionary was not found.' % key)
+                print('%s in flags, yaml or config dictionary was not found.' % key)
         if 'RUN_NUM' not in config_yaml_flags_dict:
             config_yaml_flags_dict['RUN_NUM'] = 0
         if 'NUM_EPOCHS' not in config_yaml_flags_dict:
@@ -257,16 +256,17 @@ class Model:
         self.flags['LOGGING_DIRECTORY'] = self.flags['SAVE_DIRECTORY'] + self.flags[
             'MODEL_DIRECTORY'] + folder
         self.make_directory(self.flags['LOGGING_DIRECTORY'])
-        logging.basicConfig(filename=self.flags['LOGGING_DIRECTORY'] + 'ModelInformation.log', level=logging.INFO)
+        sys.stdout = Logger(self.flags['LOGGING_DIRECTORY'] + 'ModelInformation.log')
+        print(self.flags)
 
     def _set_tf_functions(self):
         """ Sets up summary writer, saver, and session, with configurable gpu visibility """
         merged = tf.summary.merge_all()
         saver = tf.train.Saver()
         if type(self.flags['GPU']) is int:
-            gpu_options = tf.GPUOptions(allow_growth=True, visible_device_list=self.check_str(self.flags['GPU']))
-        else:
-            gpu_options = tf.GPUOptions(allow_growth=True)
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(self.flags['GPU'])
+            print('Using GPU %d' % self.flags['GPU'])
+        gpu_options = tf.GPUOptions(allow_growth=True)
         config = tf.ConfigProto(log_device_placement=False, gpu_options=gpu_options)
         sess = tf.Session(config=config)
         writer = tf.summary.FileWriter(self.flags['LOGGING_DIRECTORY'], sess.graph)
@@ -281,34 +281,33 @@ class Model:
         filename = self.flags['RESTORE_DIRECTORY'] + self._get_restore_meta_file()
         new_saver = tf.train.import_meta_graph(filename)
         new_saver.restore(self.sess, filename[:-5])
-        self.print_log("Model restored from %s" % restore_meta_file)
+        print("Model restored from %s" % restore_meta_file)
 
     def _restore_slim(self, variables):
         """ Restore from tf-slim file (usually a ImageNet pre-trained model). """
         variables_to_restore = self.get_variables_in_checkpoint_file(self.flags['RESTORE_SLIM_FILE'])
         variables_to_restore = {self.name_in_checkpoint(v): v for v in variables if (self.name_in_checkpoint(v) in variables_to_restore)}
         if variables_to_restore is []:
-            self.print_log('Check the SLIM checkpoint filename. No model variables matched the checkpoint variables.')
+            print('Check the SLIM checkpoint filename. No model variables matched the checkpoint variables.')
             exit()
         saver = tf.train.Saver(variables_to_restore)
         saver.restore(self.sess, self.flags['RESTORE_SLIM_FILE'])
-        self.print_log("Model restored from %s" % self.flags['RESTORE_SLIM_FILE'])
+        print("Model restored from %s" % self.flags['RESTORE_SLIM_FILE'])
 
     def _initialize_model(self):
         """ Initialize the defined network and restore from files is so specified. """
         # Initialize all variables first
         self.sess.run(tf.local_variables_initializer())
+        self.sess.run(tf.global_variables_initializer())
         if self.flags['RESTORE_META'] == 1:
-            self.print_log('Restoring from .meta file')
-            self.sess.run(tf.global_variables_initializer())
+            print('Restoring from .meta file')
             self._restore_meta()
         elif self.flags['RESTORE_SLIM'] == 1:
-            self.print_log('Restoring TF-Slim Model.')
+            print('Restoring TF-Slim Model.')
             all_model_variables = tf.global_variables()
-            self.sess.run(tf.global_variables_initializer())
             self._restore_slim(all_model_variables)
         else:
-            self.print_log("Model training from scratch.")
+            print("Model training from scratch.")
 
     def _init_uninit_vars(self):
         """ Initialize all other trainable variables, i.e. those which are uninitialized """
@@ -324,7 +323,7 @@ class Model:
         """ Save model in the logging directory """
         checkpoint_name = self.flags['LOGGING_DIRECTORY'] + 'part_%d' % section + '.ckpt'
         save_path = self.saver.save(self.sess, checkpoint_name)
-        self.print_log("Model saved in file: %s" % save_path)
+        print("Model saved in file: %s" % save_path)
 
     def _record_training_step(self, summary):
         """ Adds summary to writer and increments the step. """
@@ -450,6 +449,22 @@ class Model:
         return self._merge_a_into_b(yaml_cfg, config_dict)
 
 
+class Logger(object):
+    def __init__(self, filename):
+        self.terminal = sys.stdout
+        self.log = open(filename, "a")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        #this flush method is needed for python 3 compatibility.
+        #this handles the flush command by doing nothing.
+        #you might want to specify some extra behavior here.
+        pass
+
+
 class Layers:
     """
     A Class to facilitate network creation in TensorFlow.
@@ -500,7 +515,7 @@ class Layers:
                 self.input = tf.multiply(self.input, s)
             if activation_fn is not None:  # activation function
                 self.input = activation_fn(self.input)
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+        print(scope + ' output: ' + str(self.input.get_shape()))
 
     def convnet(self, filter_size, output_channels, stride=None, padding=None, activation_fn=None, b_value=None,
                 s_value=None, bn=None, trainable=True):
@@ -598,7 +613,7 @@ class Layers:
                 self.input = tf.multiply(self.input, s)
             if activation_fn is not None:  # non-linear activation function
                 self.input = activation_fn(self.input)
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))  # print shape of output
+        print(scope + ' output: ' + str(self.input.get_shape()))  # print shape of output
 
     def deconvnet(self, filter_sizes, output_channels, strides=None, padding=None, activation_fn=None, b_value=None,
                   s_value=None, bn=None, trainable=True):
@@ -663,7 +678,7 @@ class Layers:
             # Dropout function
             if keep_prob != 1:
                 self.input = tf.nn.dropout(self.input, keep_prob=keep_prob)
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+        print(scope + ' output: ' + str(self.input.get_shape()))
 
     def fc(self, output_nodes, keep_prob=1, activation_fn=tf.nn.relu, b_value=0.0, s_value=1.0, bn=True,
            trainable=True):
@@ -705,7 +720,7 @@ class Layers:
                 self.input = activation_fn(self.input)
             if keep_prob != 1:  # dropout function
                 self.input = tf.nn.dropout(self.input, keep_prob=keep_prob)
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+        print(scope + ' output: ' + str(self.input.get_shape()))
 
     def maxpool(self, k=2, s=None, globe=False):
         """
@@ -734,7 +749,7 @@ class Layers:
                 padding = 'SAME'
             # Max Pool Function
             self.input = tf.nn.max_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+        print(scope + ' output: ' + str(self.input.get_shape()))
 
     def avgpool(self, k=2, s=None, globe=False):
         """
@@ -763,7 +778,7 @@ class Layers:
                 padding = 'SAME'
             # Average Pool Function
             self.input = tf.nn.avg_pool(self.input, ksize=[1, k1, k2, 1], strides=[1, s1, s2, 1], padding=padding)
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+        print(scope + ' output: ' + str(self.input.get_shape()))
 
     def res_layer(self, output_channels, filter_size=3, stride=1, activation_fn=tf.nn.relu, bottle=False,
                   trainable=True):
@@ -830,7 +845,7 @@ class Layers:
 
             # Add input and output for final return
             self.input = self.input + additive_output
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+        print(scope + ' output: ' + str(self.input.get_shape()))
 
     def noisy_and(self, num_classes, trainable=True):
         """ Multiple Instance Learning (MIL), flexible pooling function
@@ -844,7 +859,7 @@ class Layers:
             mean = tf.reduce_mean(self.input, axis=[1, 2])
             self.input = (tf.nn.sigmoid(a * (mean - b)) - tf.nn.sigmoid(-a * b)) / (
                 tf.sigmoid(a * (1 - b)) - tf.sigmoid(-a * b))
-        self.print_log(scope + ' output: ' + str(self.input.get_shape()))
+        print(scope + ' output: ' + str(self.input.get_shape()))
 
     def get_output(self):
         """
@@ -886,7 +901,7 @@ class Layers:
         :param shape: 4D array
         :return: tf variable
         """
-        w = tf.get_variable(name=name, shape=shape, initializer=init.variance_scaling_initializer(),
+        w = tf.get_variable(name=name, shape=shape, initializer=tf.contrib.layers.variance_scaling_initializer(),
                             trainable=trainable)
         weights_norm = tf.reduce_sum(tf.nn.l2_loss(w),
                                      name=name + '_norm')  # Should user want to optimize weight decay

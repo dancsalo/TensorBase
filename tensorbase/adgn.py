@@ -161,7 +161,7 @@ class AuxDeepGenMod:
         lb_u = tf.reduce_mean(lb_u, axis=(1,2))
         y_u = tf.reduce_mean(self.samples['qy_u'], axis=(1, 2))
         y_u += 1e-8
-        y_u /= tf.reduce_sum(y_u, axis=1
+        y_u /= tf.reduce_sum(y_u, axis=1)
         lb_u = tf.reduce_sum(y_u (lb_u - tf.log(y_u)), axis=1)
         lb_l = log_px + log_py_l + log_pz + log_pa - log_qa - log_qz
         # elbo

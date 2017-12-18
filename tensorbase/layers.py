@@ -78,7 +78,7 @@ class BayesLadder(Layers):
                 self.input = tf.add(self.input, b)
             if s_value is not None:  # scale value
                 s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
-                self.input = tf.mul(self.input, s)
+                self.input = tf.multiply(self.input, s)
             if activation_fn is not None:  # activation function
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))
@@ -150,7 +150,7 @@ class BayesLadder(Layers):
                 self.input = tf.add(self.input, b)
             if s_value is not None:  # scale value
                 s = self.const_variable(name='scale', shape=[output_channels], value=s_value)
-                self.input = tf.mul(self.input, s)
+                self.input = tf.multiply(self.input, s)
             if activation_fn is not None:  # non-linear activation function
                 self.input = activation_fn(self.input)
         self.print_log(scope + ' output: ' + str(self.input.get_shape()))  # print shape of output
